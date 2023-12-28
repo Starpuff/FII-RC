@@ -1,0 +1,19 @@
+{
+    "users": [
+        {
+            "username": "user1",
+            "password": "pwd1",
+            "status": "offline"
+        },
+        {
+            "username": "user2",
+            "password": "pwd2",
+            "status": "offline"
+        },
+        {
+            "username": "user3",
+            "password": "pwd3",
+            "status": "offline"
+        }
+    ]
+}
