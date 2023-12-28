@@ -224,27 +224,37 @@ static void *treat(void *arg)
 
 void raspunde(void *arg)
 {
-  int nr, i = 0;
+  char username[100];
+  char password[100];
   struct thData tdL;
   tdL = *((struct thData *)arg);
-  if (read(tdL.cl, &nr, sizeof(int)) <= 0)
+
+  if (read(tdL.cl, username, sizeof(username)) <= 0)
   {
     printf("[Thread %d]\n", tdL.idThread);
-    perror("Eroare la read() de la client.\n");
+    perror("Eroare la read() de la client pentru username.\n");
+    return; // Exit function on error
   }
 
-  printf("[Thread %d]Mesajul a fost receptionat...%d\n", tdL.idThread, nr);
+  printf("[Thread %d] Username received: %s\n", tdL.idThread, username);
 
-  /*pregatim mesajul de raspuns */
-  nr++;
-  printf("[Thread %d]Trimitem mesajul inapoi...%d\n", tdL.idThread, nr);
+  if (read(tdL.cl, password, sizeof(password)) <= 0)
+  {
+    printf("[Thread %d]\n", tdL.idThread);
+    perror("Eroare la read() de la client pentru password.\n");
+    return; // Exit function on error
+  }
 
-  /* returnam mesajul clientului */
-  if (write(tdL.cl, &nr, sizeof(int)) <= 0)
+  printf("[Thread %d] Password received: %s\n", tdL.idThread, password);
+
+  char confirmation[] = "Received username and password.";
+  if (write(tdL.cl, confirmation, sizeof(confirmation)) <= 0)
   {
     printf("[Thread %d] ", tdL.idThread);
-    perror("[Thread]Eroare la write() catre client.\n");
+    perror("[Thread] Eroare la write() catre client pentru confirmare.\n");
   }
   else
-    printf("[Thread %d]Mesajul a fost trasmis cu succes.\n", tdL.idThread);
+  {
+    printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
+  }
 }

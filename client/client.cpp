@@ -51,14 +51,6 @@ int main(int argc, char *argv[])
     char username[100];
     char password[100];
 
-    printf("[client]Introduceti username: ");
-    fflush(stdout);
-    read(0, username, sizeof(username));
-
-    printf("[client]Introduceti parola: ");
-    fflush(stdout);
-    read(0, password, sizeof(password));
-
     /* ne conectam la server */
     if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
     {
@@ -66,14 +58,37 @@ int main(int argc, char *argv[])
         return errno;
     }
 
+    printf("[client]Introduceti username: ");
+    fflush(stdout);
+    read(0, username, sizeof(username));
     write(sd, username, strlen(username) + 1);
+    fflush(stdout);
+
+    printf("[client]Introduceti parola: ");
+    fflush(stdout);
+    read(0, password, sizeof(password));
     write(sd, password, strlen(password) + 1);
+    fflush(stdout);
 
     char loginStatus[100];
     read(sd, loginStatus, sizeof(loginStatus));
 
     printf("[client] %s\n", loginStatus);
 
-    /* Close the connection */
+    while (true)
+    {
+        printf("[client] Introduceti 'quit' pentru inchiderea conexiunii: ");
+        fflush(stdout);
+
+        char input[10];
+        scanf("%s", input);
+
+        if (strcmp(input, "quit") == 0)
+        {
+            printf("[client] Inchidere conexiune.\n");
+            break;
+        }
+    }
+
     close(sd);
 }
