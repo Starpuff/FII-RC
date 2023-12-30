@@ -13,6 +13,8 @@
 #include <cstring>
 #include <unordered_set>
 #include "json.hpp"
+#include <sqlite3.h>
+#include <sys/stat.h>
 
 using namespace std;
 using json = nlohmann::json;
@@ -29,6 +31,8 @@ typedef struct thData
 
 static void *treat(void *);
 void raspunde(void *);
+void initializeDatabase(sqlite3 *db);
+static int callback(void *data, int argc, char **argv, char **azColName);
 
 json usersData;
 
@@ -61,6 +65,38 @@ int main()
   {
     perror("[server] Error at bind().\n");
     return errno;
+  }
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open("database.db", &db);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    exit(1);
+  }
+  else
+  {
+    fprintf(stdout, "Opened database successfully\n");
+  }
+
+  initializeDatabase(db);
+
+  const char *sql = "SELECT username FROM users;";
+  rc = sqlite3_exec(db, sql, callback, 0, &err_msg);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "Failed to select data\n");
+    fprintf(stderr, "SQL error: %s\n", err_msg);
+
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+
+    return 1;
   }
 
   if (listen(sd, 2) == -1)
@@ -161,4 +197,34 @@ void raspunde(void *arg)
   {
     printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
   }
+}
+
+void initializeDatabase(sqlite3 *db)
+{
+
+  char *err_msg = 0;
+  const char *createUsersTableQuery = "BEGIN TRANSACTION;"
+                                      "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password TEXT NOT NULL);"
+                                      "INSERT OR IGNORE INTO users (username, password) VALUES ('a', 'a');"
+                                      "INSERT OR IGNORE INTO users (username, password) VALUES ('b', 'b');"
+                                      "INSERT OR IGNORE INTO users (username, password) VALUES ('c', 'c');"
+                                      "INSERT OR IGNORE INTO users (username, password) VALUES ('d', 'd');"
+                                      "INSERT OR IGNORE INTO users (username, password) VALUES ('e', 'e');"
+                                      "INSERT OR IGNORE INTO users (username, password) VALUES ('f', 'f');"
+                                      "COMMIT;";
+  int rc = sqlite3_exec(db, createUsersTableQuery, 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+    exit(1);
+  }
+}
+
+static int callback(void *NotUsed, int argc, char **argv, char **azColName)
+{
+  printf("Username = %s\n", argv[0] ? argv[0] : "NULL");
+  return 0;
 }
