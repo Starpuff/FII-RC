@@ -94,3 +94,5 @@ int main(int argc, char *argv[])
 
     close(sd);
 }
+// g++ client.cpp -o client
+//./client 127.0.0.1 2908

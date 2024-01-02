@@ -12,12 +12,9 @@
 #include <fstream>
 #include <cstring>
 #include <unordered_set>
-#include "json.hpp"
 #include <sqlite3.h>
-#include <sys/stat.h>
 
 using namespace std;
-using json = nlohmann::json;
 
 #define PORT 2908
 
@@ -30,11 +27,10 @@ typedef struct thData
 } thData;
 
 static void *treat(void *);
-void raspunde(void *);
+void handleLogin(void *, sqlite3 *db);
 void initializeDatabase(sqlite3 *db);
-static int callback(void *data, int argc, char **argv, char **azColName);
-
-json usersData;
+static int callbackPrintUsers(void *data, int argc, char **argv, char **azColName);
+static int callbackUsernameExists(void *data, int argc, char **argv, char **azColName);
 
 int main()
 {
@@ -67,6 +63,8 @@ int main()
     return errno;
   }
 
+  // ------------------ DATABASE ------------------
+
   sqlite3 *db;
   char *err_msg = 0;
 
@@ -86,7 +84,7 @@ int main()
   initializeDatabase(db);
 
   const char *sql = "SELECT username FROM users;";
-  rc = sqlite3_exec(db, sql, callback, 0, &err_msg);
+  rc = sqlite3_exec(db, sql, callbackPrintUsers, 0, &err_msg);
 
   if (rc != SQLITE_OK)
   {
@@ -98,6 +96,8 @@ int main()
 
     return 1;
   }
+
+  // ------------------ no more database --------------------
 
   if (listen(sd, 2) == -1)
   {
@@ -132,10 +132,23 @@ static void *treat(void *arg)
 {
   struct thData tdL;
   tdL = *((struct thData *)arg);
-  printf("[thread]- %d - Waiting for messages...\n", tdL.idThread);
+  sqlite3 *db;
+  int rc = sqlite3_open("database.db", &db);
+
+  if (rc != SQLITE_OK)
+  {
+    printf("[Thread %d] Cannot open database: %s\n", tdL.idThread, sqlite3_errmsg(db));
+    sqlite3_close(db);
+    exit(1);
+  }
+  else
+  {
+    printf("[Thread %d] Opened database successfully\n", tdL.idThread);
+  }
+  printf("[Thread %d] Waiting for messages...\n", tdL.idThread);
   fflush(stdout);
   pthread_detach(pthread_self());
-  raspunde((struct thData *)arg);
+  handleLogin((struct thData *)arg, db);
 
   while (true)
   {
@@ -162,10 +175,11 @@ static void *treat(void *arg)
   return (NULL);
 };
 
-void raspunde(void *arg)
+void handleLogin(void *arg, sqlite3 *db)
 {
   char username[100];
   char password[100];
+  char *err_msg = 0;
   struct thData tdL;
   tdL = *((struct thData *)arg);
 
@@ -177,6 +191,38 @@ void raspunde(void *arg)
   }
 
   printf("[Thread %d] Username received: %s\n", tdL.idThread, username);
+
+  sqlite3_stmt *stmt;
+  string modified_username = "'" + string(username) + "'";
+  const char *sql = "SELECT username FROM users WHERE username = ?";
+
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    return;
+  }
+
+  printf("strlen(username) = %ld\n", strlen(username));
+  if (sqlite3_bind_text(stmt, 1, username, strlen(username) - 1, SQLITE_STATIC) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    return;
+  }
+
+  printf("am ajuns aici\n");
+  int rc = sqlite3_step(stmt);
+  int username_exists = rc == SQLITE_ROW;
+
+  printf("[Thread %d] sqlite3_step returned: %d\n", tdL.idThread, rc);
+
+  if (username_exists)
+    printf("[Thread %d] Username exists.\n", tdL.idThread);
+  else
+  {
+    printf("[Thread %d] Username does not exist.\n", tdL.idThread);
+  }
+
+  sqlite3_finalize(stmt);
 
   if (read(tdL.cl, password, sizeof(password)) <= 0)
   {
@@ -204,6 +250,7 @@ void initializeDatabase(sqlite3 *db)
 
   char *err_msg = 0;
   const char *createUsersTableQuery = "BEGIN TRANSACTION;"
+                                      "PRAGMA foreign_keys = ON;"
                                       "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password TEXT NOT NULL);"
                                       "INSERT OR IGNORE INTO users (username, password) VALUES ('a', 'a');"
                                       "INSERT OR IGNORE INTO users (username, password) VALUES ('b', 'b');"
@@ -211,6 +258,7 @@ void initializeDatabase(sqlite3 *db)
                                       "INSERT OR IGNORE INTO users (username, password) VALUES ('d', 'd');"
                                       "INSERT OR IGNORE INTO users (username, password) VALUES ('e', 'e');"
                                       "INSERT OR IGNORE INTO users (username, password) VALUES ('f', 'f');"
+                                      "INSERT OR IGNORE INTO users (username, password) VALUES ('ana', 'ana');"
                                       "COMMIT;";
   int rc = sqlite3_exec(db, createUsersTableQuery, 0, 0, &err_msg);
 
@@ -221,10 +269,46 @@ void initializeDatabase(sqlite3 *db)
     sqlite3_close(db);
     exit(1);
   }
+
+  const char *createConversationsTableQuery = "CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY AUTOINCREMENT, user1 TEXT NOT NULL, user2 TEXT NOT NULL, conversationName TEXT NOT NULL);";
+
+  rc = sqlite3_exec(db, createConversationsTableQuery, 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+    exit(1);
+  }
 }
 
-static int callback(void *NotUsed, int argc, char **argv, char **azColName)
+void createConversationTable(sqlite3 *db, char *user1, char *user2, char *conversationName)
+{
+  char *err_msg = 0;
+  string createConversationTableQuery = string("CREATE TABLE IF NOT EXISTS ") + conversationName + " (id INTEGER PRIMARY KEY AUTOINCREMENT, message TEXT NOT NULL, sender TEXT NOT NULL, readByReceiver INTEGER DEFAULT 0, replyTo INTEGER, Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (Sender) REFERENCES users(username), FOREIGN KEY (replyTo) REFERENCES " + conversationName + "(id));";
+  int rc = sqlite3_exec(db, createConversationTableQuery.c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+    exit(1);
+  }
+}
+
+static int callbackPrintUsers(void *NotUsed, int argc, char **argv, char **azColName)
 {
   printf("Username = %s\n", argv[0] ? argv[0] : "NULL");
   return 0;
 }
+
+static int callbackUsernameExists(void *data, int argc, char **argv, char **azColName)
+{
+  int *username_exists = (int *)data;
+  *username_exists = 1;
+  return 0;
+}
+
+// g++ server.cpp -o server -pthread -std=c++11 -lstdc++ -lsqlite3
