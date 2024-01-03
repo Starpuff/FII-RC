@@ -193,7 +193,7 @@ void handleLogin(void *arg, sqlite3 *db)
   printf("[Thread %d] Username received: %s\n", tdL.idThread, username);
 
   sqlite3_stmt *stmt;
-  string modified_username = "'" + string(username) + "'";
+  // string modified_username = "'" + string(username) + "'";
   const char *sql = "SELECT username FROM users WHERE username = ?";
 
   if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) != SQLITE_OK)
@@ -209,40 +209,121 @@ void handleLogin(void *arg, sqlite3 *db)
     return;
   }
 
-  printf("am ajuns aici\n");
+  // printf("am ajuns aici\n");
   int rc = sqlite3_step(stmt);
-  int username_exists = rc == SQLITE_ROW;
+  int usernameExists = rc == SQLITE_ROW;
 
-  printf("[Thread %d] sqlite3_step returned: %d\n", tdL.idThread, rc);
+  // printf("[Thread %d] sqlite3_step returned: %d\n", tdL.idThread, rc);
 
-  if (username_exists)
+  if (usernameExists)
+  {
     printf("[Thread %d] Username exists.\n", tdL.idThread);
+    char usernameConfirmation[] = "Username exists.";
+    if (write(tdL.cl, usernameConfirmation, sizeof(usernameConfirmation)) <= 0)
+    {
+      printf("[Thread %d] ", tdL.idThread);
+      perror("[Thread] Error at write(confirmation-username) to the client.\n");
+    }
+    else
+    {
+      printf("[Thread %d] Username confirmation message sent.\n", tdL.idThread);
+
+      //  ---------- password -----------
+      if (read(tdL.cl, password, sizeof(password)) <= 0)
+      {
+        printf("[Thread %d]\n", tdL.idThread);
+        perror("Error at read(password) from client.\n");
+        return;
+      }
+
+      printf("[Thread %d] Password received: %s\n", tdL.idThread, password);
+
+      sqlite3_stmt *stmtPassword;
+      const char *sqlPassword = "SELECT password FROM users WHERE username = ? AND password = ?";
+
+      if (sqlite3_prepare_v2(db, sqlPassword, -1, &stmtPassword, 0) != SQLITE_OK)
+      {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return;
+      }
+
+      if (sqlite3_bind_text(stmtPassword, 1, username, strlen(username) - 1, SQLITE_STATIC) != SQLITE_OK)
+      {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return;
+      }
+
+      if (sqlite3_bind_text(stmtPassword, 2, password, strlen(password) - 1, SQLITE_STATIC) != SQLITE_OK)
+      {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return;
+      }
+
+      int rcPassword = sqlite3_step(stmtPassword);
+      int passwordCorrect = rcPassword == SQLITE_ROW;
+
+      if (passwordCorrect)
+      {
+        printf("[Thread %d] Password is correct.\n", tdL.idThread);
+        char passwordConfirmation[] = "Password is correct.";
+        if (write(tdL.cl, passwordConfirmation, sizeof(passwordConfirmation)) <= 0)
+        {
+          printf("[Thread %d] ", tdL.idThread);
+          perror("[Thread] Error at write(confirmation-password) to the client.\n");
+        }
+        else
+        {
+          printf("[Thread %d] Password confirmation message sent.\n", tdL.idThread);
+          fflush(stdout);
+
+          // ------------ user & pwd confirmation --------------
+          char confirmation[] = "Received username and password are correct.";
+          if (write(tdL.cl, confirmation, sizeof(confirmation)) <= 0)
+          {
+            printf("[Thread %d] ", tdL.idThread);
+            perror("[Thread] Error at write(confirmation) to the client.\n");
+          }
+          else
+          {
+            printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
+          }
+          fflush(stdout);
+          // ------------ /user & pwd confirmation --------------
+        }
+      }
+      else
+      {
+        printf("[Thread %d] Password is incorrect. Closing connection...\n", tdL.idThread);
+        char passwordError[] = "Password is incorrect.";
+        if (write(tdL.cl, passwordError, sizeof(passwordError)) <= 0)
+        {
+          printf("[Thread %d] ", tdL.idThread);
+          perror("[Thread] Error at write(password-error) to the client.\n");
+        }
+        else
+        {
+          printf("[Thread %d] Password error message sent.\n", tdL.idThread);
+        }
+      }
+      // ------------ /password --------------
+    }
+  }
   else
   {
-    printf("[Thread %d] Username does not exist.\n", tdL.idThread);
+    printf("[Thread %d] Username does not exist. Closing connection...\n", tdL.idThread);
+    char usernameError[] = "Username does not exist.";
+    if (write(tdL.cl, usernameError, sizeof(usernameError)) <= 0)
+    {
+      printf("[Thread %d] ", tdL.idThread);
+      perror("[Thread] Error at write(username-error) to the client.\n");
+    }
+    else
+    {
+      printf("[Thread %d] Username error message sent.\n", tdL.idThread);
+    }
   }
 
   sqlite3_finalize(stmt);
-
-  if (read(tdL.cl, password, sizeof(password)) <= 0)
-  {
-    printf("[Thread %d]\n", tdL.idThread);
-    perror("Error at read(password) from client.\n");
-    return;
-  }
-
-  printf("[Thread %d] Password received: %s\n", tdL.idThread, password);
-
-  char confirmation[] = "Received username and password.";
-  if (write(tdL.cl, confirmation, sizeof(confirmation)) <= 0)
-  {
-    printf("[Thread %d] ", tdL.idThread);
-    perror("[Thread] Error at write(confirmation) to the client.\n");
-  }
-  else
-  {
-    printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
-  }
 }
 
 void initializeDatabase(sqlite3 *db)
@@ -301,13 +382,6 @@ void createConversationTable(sqlite3 *db, char *user1, char *user2, char *conver
 static int callbackPrintUsers(void *NotUsed, int argc, char **argv, char **azColName)
 {
   printf("Username = %s\n", argv[0] ? argv[0] : "NULL");
-  return 0;
-}
-
-static int callbackUsernameExists(void *data, int argc, char **argv, char **azColName)
-{
-  int *username_exists = (int *)data;
-  *username_exists = 1;
   return 0;
 }
 

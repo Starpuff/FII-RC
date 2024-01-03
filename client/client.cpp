@@ -9,74 +9,51 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-/* codul de eroare returnat de anumite apeluri */
 extern int errno;
 
-/* portul de conectare la server*/
 int port;
+
+int login(int sd, char *username, char *password);
 
 int main(int argc, char *argv[])
 {
-    int sd;                    // descriptorul de socket
-    struct sockaddr_in server; // structura folosita pentru conectare
-                               // mesajul trimis
+    int sd;
+    struct sockaddr_in server;
     int nr = 0;
     char buf[10];
 
-    /* exista toate argumentele in linia de comanda? */
     if (argc != 3)
     {
         printf("Sintaxa: %s <adresa_server> <port>\n", argv[0]);
         return -1;
     }
 
-    /* stabilim portul */
     port = atoi(argv[2]);
 
-    /* cream socketul */
     if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
     {
         perror("Eroare la socket().\n");
         return errno;
     }
 
-    /* umplem structura folosita pentru realizarea conexiunii cu serverul */
-    /* familia socket-ului */
     server.sin_family = AF_INET;
-    /* adresa IP a serverului */
     server.sin_addr.s_addr = inet_addr(argv[1]);
-    /* portul de conectare */
     server.sin_port = htons(port);
 
     char username[100];
     char password[100];
 
-    /* ne conectam la server */
     if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
     {
         perror("[client] Error at connect().\n");
         return errno;
     }
 
-    printf("[client] Enter your username: ");
-    fflush(stdout);
-    read(0, username, sizeof(username));
-    write(sd, username, strlen(username) + 1);
-    fflush(stdout);
-
-    printf("[client] Enter your password: ");
-    fflush(stdout);
-    read(0, password, sizeof(password));
-    write(sd, password, strlen(password) + 1);
-    fflush(stdout);
-
-    char loginStatus[100];
-    read(sd, loginStatus, sizeof(loginStatus));
-
-    printf("[server] %s\n", loginStatus);
+    login(sd, username, password);
 
     while (true)
     {
+        fflush(stdout);
         printf("[client] Enter 'quit' to close the connection: ");
         fflush(stdout);
 
@@ -93,6 +70,91 @@ int main(int argc, char *argv[])
     }
 
     close(sd);
+}
+
+int login(int sd, char *username, char *password)
+{
+    printf("[client] Enter your username: ");
+    fflush(stdout);
+    read(0, username, sizeof(username));
+    write(sd, username, strlen(username) + 1);
+    fflush(stdout);
+
+    char usernameStatus[100];
+    if (read(sd, usernameStatus, sizeof(usernameStatus)) < 0)
+    {
+        perror("[client] Error at read().\n");
+        return errno;
+    }
+    else
+    {
+        if (strcmp(usernameStatus, "Username exists.") == 0)
+        {
+            printf("[client] Enter your password: ");
+            fflush(stdout);
+            read(0, password, sizeof(password));
+            write(sd, password, strlen(password) + 1);
+            fflush(stdout);
+
+            char passwordStatus[100];
+            if (read(sd, passwordStatus, sizeof(passwordStatus)) < 0)
+            {
+                perror("[client] Error at read().\n");
+                fflush(stdout);
+                return errno;
+            }
+            else
+            {
+                if (strcmp(passwordStatus, "Password is correct.") == 0)
+                {
+                    printf("[server] %s\n", passwordStatus);
+                    fflush(stdout);
+                    char loginStatus[100];
+                    if (read(sd, loginStatus, sizeof(loginStatus)) < 0)
+                    {
+                        perror("[client] Error at read().\n");
+                        fflush(stdout);
+                        return errno;
+                    }
+                    fflush(stdout);
+                    printf("[server] %s\n", loginStatus);
+                    fflush(stdout);
+                }
+                else if (strcmp(passwordStatus, "Password is incorrect.") == 0)
+                {
+                    printf("[server] %s\n", passwordStatus);
+                    printf("[client] Closing connection...\n");
+                    fflush(stdout);
+                    close(sd);
+                    return 0;
+                }
+                else
+                {
+                    printf("[client] Unexpected reply. Closing connection...\n");
+                    fflush(stdout);
+                    close(sd);
+                    return 0;
+                }
+            }
+        }
+        else if (strcmp(usernameStatus, "Username does not exist.") == 0)
+        {
+            printf("[server] %s\n", usernameStatus);
+            fflush(stdout);
+            printf("[client] Closing connection...\n");
+            fflush(stdout);
+            close(sd);
+            return 0;
+        }
+        else
+        {
+            printf("[client] Unexpected reply. Closing connection...\n");
+            fflush(stdout);
+            close(sd);
+            return 0;
+        }
+        return 0;
+    }
 }
 // g++ client.cpp -o client
 //./client 127.0.0.1 2908
