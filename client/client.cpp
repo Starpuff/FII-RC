@@ -8,6 +8,9 @@
 #include <netdb.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <iostream>
+
+using namespace std;
 
 extern int errno;
 
@@ -53,8 +56,16 @@ int main(int argc, char *argv[])
 
     while (true)
     {
+        printf("[client] Choose a command: \n");
+        printf("[client] 1 - Show all users. \n");
+        printf("[client] 2 - Show all online users. \n");
+        printf("[client] 3 - Send a message to a user. \n");
+        printf("[client] 4 - Show chat history with a user. \n");
+        printf("[client] 5 - Show all unread messages. \n");
+        printf("[client] 6 - Reply to a message. \n");
+        printf("[client] 'quit' - close the connection. \n");
+        printf("[client] To enter a command, type the corresponding number or phrase: ");
         fflush(stdout);
-        printf("[client] Enter 'quit' to close the connection: ");
         fflush(stdout);
 
         char input[10];
@@ -74,6 +85,8 @@ int main(int argc, char *argv[])
 
 int login(int sd, char *username, char *password)
 {
+    memset(username, 0, sizeof(username));
+    memset(password, 0, sizeof(password));
     printf("[client] Enter your username: ");
     fflush(stdout);
     read(0, username, sizeof(username));
@@ -81,6 +94,7 @@ int login(int sd, char *username, char *password)
     fflush(stdout);
 
     char usernameStatus[100];
+    memset(usernameStatus, 0, sizeof(usernameStatus));
     if (read(sd, usernameStatus, sizeof(usernameStatus)) < 0)
     {
         perror("[client] Error at read().\n");
@@ -90,13 +104,16 @@ int login(int sd, char *username, char *password)
     {
         if (strcmp(usernameStatus, "Username exists.") == 0)
         {
+            fflush(stdout);
             printf("[client] Enter your password: ");
             fflush(stdout);
             read(0, password, sizeof(password));
+            fflush(stdout);
             write(sd, password, strlen(password) + 1);
             fflush(stdout);
 
             char passwordStatus[100];
+            memset(passwordStatus, 0, sizeof(passwordStatus));
             if (read(sd, passwordStatus, sizeof(passwordStatus)) < 0)
             {
                 perror("[client] Error at read().\n");
@@ -105,27 +122,20 @@ int login(int sd, char *username, char *password)
             }
             else
             {
-                if (strcmp(passwordStatus, "Password is correct.") == 0)
+                if (strcmp(passwordStatus, "Password is correct. Logging in...") == 0)
                 {
+                    fflush(stdout);
                     printf("[server] %s\n", passwordStatus);
-                    fflush(stdout);
-                    char loginStatus[100];
-                    if (read(sd, loginStatus, sizeof(loginStatus)) < 0)
-                    {
-                        perror("[client] Error at read().\n");
-                        fflush(stdout);
-                        return errno;
-                    }
-                    fflush(stdout);
-                    printf("[server] %s\n", loginStatus);
                     fflush(stdout);
                 }
                 else if (strcmp(passwordStatus, "Password is incorrect.") == 0)
                 {
-                    printf("[server] %s\n", passwordStatus);
-                    printf("[client] Closing connection...\n");
                     fflush(stdout);
+                    printf("[server] %s\n", passwordStatus);
+                    fflush(stdout);
+                    printf("[client] Closing connection...\n");
                     close(sd);
+                    exit(0);
                     return 0;
                 }
                 else
@@ -133,28 +143,34 @@ int login(int sd, char *username, char *password)
                     printf("[client] Unexpected reply. Closing connection...\n");
                     fflush(stdout);
                     close(sd);
+                    exit(0);
                     return 0;
                 }
             }
         }
         else if (strcmp(usernameStatus, "Username does not exist.") == 0)
         {
+            fflush(stdout);
             printf("[server] %s\n", usernameStatus);
             fflush(stdout);
             printf("[client] Closing connection...\n");
             fflush(stdout);
             close(sd);
+            exit(0);
             return 0;
         }
         else
         {
+            fflush(stdout);
             printf("[client] Unexpected reply. Closing connection...\n");
             fflush(stdout);
             close(sd);
+            exit(0);
             return 0;
         }
         return 0;
     }
 }
+
 // g++ client.cpp -o client
 //./client 127.0.0.1 2908

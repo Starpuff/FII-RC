@@ -13,6 +13,7 @@
 #include <cstring>
 #include <unordered_set>
 #include <sqlite3.h>
+#include <cstdlib>
 
 using namespace std;
 
@@ -31,6 +32,7 @@ void handleLogin(void *, sqlite3 *db);
 void initializeDatabase(sqlite3 *db);
 static int callbackPrintUsers(void *data, int argc, char **argv, char **azColName);
 static int callbackUsernameExists(void *data, int argc, char **argv, char **azColName);
+void createConversationTable(sqlite3 *db, char *user1, char *user2, char *conversationName);
 
 int main()
 {
@@ -73,12 +75,14 @@ int main()
   if (rc != SQLITE_OK)
   {
     fprintf(stderr, "Cannot open database: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
     sqlite3_close(db);
     exit(1);
   }
   else
   {
     fprintf(stdout, "Opened database successfully\n");
+    fflush(stdout);
   }
 
   initializeDatabase(db);
@@ -90,6 +94,7 @@ int main()
   {
     fprintf(stderr, "Failed to select data\n");
     fprintf(stderr, "SQL error: %s\n", err_msg);
+    fflush(stdout);
 
     sqlite3_free(err_msg);
     sqlite3_close(db);
@@ -138,12 +143,14 @@ static void *treat(void *arg)
   if (rc != SQLITE_OK)
   {
     printf("[Thread %d] Cannot open database: %s\n", tdL.idThread, sqlite3_errmsg(db));
+    fflush(stdout);
     sqlite3_close(db);
     exit(1);
   }
   else
   {
     printf("[Thread %d] Opened database successfully\n", tdL.idThread);
+    fflush(stdout);
   }
   printf("[Thread %d] Waiting for messages...\n", tdL.idThread);
   fflush(stdout);
@@ -159,16 +166,19 @@ static void *treat(void *arg)
     {
       close(((thData *)arg)->cl);
       printf("[Thread %d] Client disconnected.\n", tdL.idThread);
+      fflush(stdout);
       return (NULL);
     }
     else if (bytesRead <= 0)
     {
       printf("[Thread %d] Client disconnected or encountered an error.\n", tdL.idThread);
+      fflush(stdout);
       break;
     }
     else
     {
       printf("[Thread %d] Received an unknown command from this client.\n", tdL.idThread);
+      fflush(stdout);
     }
   }
   close((intptr_t)arg);
@@ -178,7 +188,9 @@ static void *treat(void *arg)
 void handleLogin(void *arg, sqlite3 *db)
 {
   char username[100];
+  memset(username, 0, sizeof(username));
   char password[100];
+  memset(password, 0, sizeof(password));
   char *err_msg = 0;
   struct thData tdL;
   tdL = *((struct thData *)arg);
@@ -186,11 +198,13 @@ void handleLogin(void *arg, sqlite3 *db)
   if (read(tdL.cl, username, sizeof(username)) <= 0)
   {
     printf("[Thread %d]\n", tdL.idThread);
+    fflush(stdout);
     perror("Error at read(username) from client.\n");
     return;
   }
 
   printf("[Thread %d] Username received: %s\n", tdL.idThread, username);
+  fflush(stdout);
 
   sqlite3_stmt *stmt;
   // string modified_username = "'" + string(username) + "'";
@@ -200,12 +214,14 @@ void handleLogin(void *arg, sqlite3 *db)
   {
     fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
     return;
+    fflush(stdout);
   }
 
-  printf("strlen(username) = %ld\n", strlen(username));
+  // printf("strlen(username) = %ld\n", strlen(username));
   if (sqlite3_bind_text(stmt, 1, username, strlen(username) - 1, SQLITE_STATIC) != SQLITE_OK)
   {
     fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
     return;
   }
 
@@ -218,25 +234,30 @@ void handleLogin(void *arg, sqlite3 *db)
   if (usernameExists)
   {
     printf("[Thread %d] Username exists.\n", tdL.idThread);
+    fflush(stdout);
     char usernameConfirmation[] = "Username exists.";
     if (write(tdL.cl, usernameConfirmation, sizeof(usernameConfirmation)) <= 0)
     {
       printf("[Thread %d] ", tdL.idThread);
+      fflush(stdout);
       perror("[Thread] Error at write(confirmation-username) to the client.\n");
     }
     else
     {
       printf("[Thread %d] Username confirmation message sent.\n", tdL.idThread);
+      fflush(stdout);
 
       //  ---------- password -----------
       if (read(tdL.cl, password, sizeof(password)) <= 0)
       {
         printf("[Thread %d]\n", tdL.idThread);
+        fflush(stdout);
         perror("Error at read(password) from client.\n");
         return;
       }
 
       printf("[Thread %d] Password received: %s\n", tdL.idThread, password);
+      fflush(stdout);
 
       sqlite3_stmt *stmtPassword;
       const char *sqlPassword = "SELECT password FROM users WHERE username = ? AND password = ?";
@@ -264,31 +285,19 @@ void handleLogin(void *arg, sqlite3 *db)
 
       if (passwordCorrect)
       {
-        printf("[Thread %d] Password is correct.\n", tdL.idThread);
-        char passwordConfirmation[] = "Password is correct.";
+        printf("[Thread %d] Password is correct. Logging in...\n", tdL.idThread);
+        fflush(stdout);
+        char passwordConfirmation[] = "Password is correct. Logging in...";
         if (write(tdL.cl, passwordConfirmation, sizeof(passwordConfirmation)) <= 0)
         {
           printf("[Thread %d] ", tdL.idThread);
+          fflush(stdout);
           perror("[Thread] Error at write(confirmation-password) to the client.\n");
         }
         else
         {
           printf("[Thread %d] Password confirmation message sent.\n", tdL.idThread);
           fflush(stdout);
-
-          // ------------ user & pwd confirmation --------------
-          char confirmation[] = "Received username and password are correct.";
-          if (write(tdL.cl, confirmation, sizeof(confirmation)) <= 0)
-          {
-            printf("[Thread %d] ", tdL.idThread);
-            perror("[Thread] Error at write(confirmation) to the client.\n");
-          }
-          else
-          {
-            printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
-          }
-          fflush(stdout);
-          // ------------ /user & pwd confirmation --------------
         }
       }
       else
