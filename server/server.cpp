@@ -169,6 +169,8 @@ static void *treat(void *arg)
     char command[100];
     int bytesRead = read(((thData *)arg)->cl, &command, sizeof(int));
 
+    /// TODO: refresh / nullify command so it doesn't stay the same throughout the loop
+
     printf("\n[Thread %d] Received command: %s\n\n", tdL.idThread, command);
     if (strcmp(command, "quit") == 0)
     {
@@ -181,7 +183,7 @@ static void *treat(void *arg)
     {
       printf("[Thread %d] Received command 1. Getting all users...\n", tdL.idThread);
       fflush(stdout);
-      char * userList = getAllUsers(db);
+      char *userList = getAllUsers(db);
       if (userList == NULL)
       {
         printf("[Thread %d] Failed to receive userList.\n", tdL.idThread);
@@ -195,13 +197,13 @@ static void *treat(void *arg)
         printf("[Thread %d] length of userList = %ld\n", tdL.idThread, strlen(userList));
 
         size_t userListLength = strlen(userList);
-        if(write(tdL.cl, &userListLength, sizeof(userListLength))<0)
+        if (write(tdL.cl, &userListLength, sizeof(userListLength)) < 0)
         {
           perror("[Thread] Error at write(userListLength) to the client.\n");
           free(userList);
           return 0;
         }
-        if(write(tdL.cl, userList, userListLength)<0)
+        if (write(tdL.cl, userList, userListLength) < 0)
         {
           perror("[Thread] Error at write(userList) to the client.\n");
           free(userList);
@@ -509,7 +511,7 @@ int callbackGetAllUsers(void *data, int argc, char **argv, char **azColName)
       *users = strdup(argv[i]);
     else
     {
-      *users = static_cast<char*>(realloc(*users, strlen(*users) + strlen(argv[i]) + 2));
+      *users = static_cast<char *>(realloc(*users, strlen(*users) + strlen(argv[i]) + 2));
       strcat(*users, " ");
       strcat(*users, argv[i]);
     }
