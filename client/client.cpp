@@ -17,6 +17,7 @@ extern int errno;
 int port;
 
 int login(int sd, char *username, char *password);
+void getAllUsers(int sd, char *username);
 
 int main(int argc, char *argv[])
 {
@@ -44,7 +45,9 @@ int main(int argc, char *argv[])
     server.sin_port = htons(port);
 
     char username[100];
+    memset(username, 0, sizeof(username));
     char password[100];
+    memset(password, 0, sizeof(password));
 
     if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
     {
@@ -66,10 +69,14 @@ int main(int argc, char *argv[])
         printf("[client] 'quit' - close the connection. \n");
         printf("[client] To enter a command, type the corresponding number or phrase: ");
         fflush(stdout);
-        fflush(stdout);
 
         char input[10];
         scanf("%s", input);
+
+        if (strcmp(input, "1") == 0)
+        {
+            getAllUsers(sd, username);
+        }
 
         if (strcmp(input, "quit") == 0)
         {
@@ -159,6 +166,16 @@ int login(int sd, char *username, char *password)
             exit(0);
             return 0;
         }
+        else if (strcmp(usernameStatus, "User is already logged in.") == 0)
+        {
+            printf("[server] %s\n", usernameStatus);
+            fflush(stdout);
+            printf("[client] Closing connection...\n");
+            fflush(stdout);
+            close(sd);
+            exit(0);
+            return 0;
+        }
         else
         {
             fflush(stdout);
@@ -172,5 +189,33 @@ int login(int sd, char *username, char *password)
     }
 }
 
+void getAllUsers(int sd, char *username)
+{
+    write(sd, "1", strlen("1") + 1);
+
+    size_t usernamesSize;
+    if (read(sd, &usernamesSize, sizeof(usernamesSize))<0)
+    {
+        perror("[client] Error at read().\n");
+        return;
+    }
+
+    char *allUsers = (char *)malloc(usernamesSize + 1);
+    if (allUsers == NULL)
+    {
+        perror("[client] Error at malloc().\n");
+        return;
+    }
+    if (read(sd, allUsers, usernamesSize) < 0)
+    {
+        perror("[client] Error at read().\n");
+        fflush(stdout);
+        free(allUsers);
+        return;
+    }
+    
+    allUsers[usernamesSize] = '\0';
+    printf("[Server] List of all users: %s\n", allUsers);
+}
 // g++ client.cpp -o client
 //./client 127.0.0.1 2908
