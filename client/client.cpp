@@ -27,6 +27,7 @@ void reverse(char str[], int length);
 char *itoa(int num, char str[], int base);
 void getConversation(int sd, char *user);
 int command3(int sd, char *sender, char *receiver);
+void printMessage(char *message);
 
 int main(int argc, char *argv[])
 {
@@ -71,7 +72,7 @@ int main(int argc, char *argv[])
     while (true)
     {
         printf("\n[client] Choose a command: \n");
-        printf("[client] 1 - Show all users.  2 - Show all online users.  3 - Send a message to a user.  4 - Show chat history with a user.  5 - Show all unread messages.  6 - Reply to a message.\n");
+        printf("[client] 1 - Show all users.  2 - Show all online users.  3 - Send a message to an user.  4 - Show chat history with an user.  5 - Show all unread messages.  6 - Reply to a message.\n");
         printf("[client] 'quit' - close the connection. \n");
         printf("[client] To enter a command, type the corresponding number or phrase: ");
         fflush(stdout);
@@ -335,7 +336,6 @@ char *itoa(int num, char str[], int base)
     int i = 0;
     int isNegative = 0;
 
-    // Handle 0 explicitly, otherwise empty string is printed
     if (num == 0)
     {
         str[i++] = '0';
@@ -343,14 +343,12 @@ char *itoa(int num, char str[], int base)
         return str;
     }
 
-    // Handle negative numbers for bases other than 10
     if (num < 0 && base != 10)
     {
         isNegative = 1;
         num = -num;
     }
 
-    // Process individual digits
     while (num != 0)
     {
         int remainder = num % base;
@@ -358,15 +356,13 @@ char *itoa(int num, char str[], int base)
         num = num / base;
     }
 
-    // Append negative sign for bases other than 10
     if (isNegative && base != 10)
     {
         str[i++] = '-';
     }
 
-    str[i] = '\0'; // Null-terminate the string
+    str[i] = '\0';
 
-    // Reverse the string
     reverse(str, i);
 
     return str;
@@ -374,8 +370,6 @@ char *itoa(int num, char str[], int base)
 
 void getConversation(int sd, char *user)
 {
-    writePlusSize(sd, "4");
-
     writePlusSize(sd, user);
 
     char *userStatus = (char *)calloc(100, sizeof(char));
@@ -408,6 +402,7 @@ void getConversation(int sd, char *user)
     {
         printf("[server] %s\n", conversationStatus);
         fflush(stdout);
+
     }
     else if (strcmp(conversationStatus, "No conversation found.") == 0)
     {
@@ -424,8 +419,47 @@ void getConversation(int sd, char *user)
         return;
     }
 
+    char *message = (char *)calloc(1200, sizeof(char));
+    readPlusSize(sd, message, 1200);
+    while (strcmp(message, "end") != 0)
+    {
+        printMessage(message);
+        readPlusSize(sd, message, 1200);
+    }
+
     /// TODO: primeste conversatia, while loop probabil
 }
+
+void printMessage(char *message)
+{
+    char *id = (char *)calloc(10, sizeof(char));
+    char *sender = (char *)calloc(100, sizeof(char));
+    char *messageContent = (char *)calloc(1000, sizeof(char));
+    char *replyTo = (char *)calloc(10, sizeof(char));
+
+    char *p = strtok(message, " ");
+    strcpy(id, p);
+    p = strtok(NULL, " ");
+    strcpy(sender, p);
+    p = strtok(NULL, " ");
+    strcpy(messageContent, p);
+    p = strtok(NULL, " ");
+    if (strcmp(p, "0") != 0)
+    {
+        strcpy(replyTo, p);
+        printf("id: %s -- [%s] %s (reply to %s)\n", id, sender, messageContent, replyTo);
+    }
+    else
+    {
+        printf("id: %s -- [%s] %s\n", id, sender, messageContent);
+    }
+
+    free(id);
+    free(sender);
+    free(messageContent);
+    free(replyTo);
+}
+
 
 int command3(int sd, char *sender, char *receiver)
 {
