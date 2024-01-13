@@ -131,7 +131,7 @@ int login(int sd, char *username, char *password)
             printf("[server] %s\n", passwordStatus);
             fflush(stdout);
         }
-        else if (strcmp(passwordStatus, "Password is incorrect.") == 0)
+        else if (strcmp(passwordStatus, "Password is incorrect or user is already logged in.") == 0)
         {
             printf("[server] %s\n", passwordStatus);
             printf("[client] Closing connection...\n");
@@ -195,7 +195,7 @@ void getAllLoggedUsers(int sd)
     memset(allLoggedUsers, 0, sizeof(allLoggedUsers));
     readPlusSize(sd, allLoggedUsers, 1000);
 
-    printf("[Server] List of all logged users: %s\n", allLoggedUsers);
+    printf("\n\n[Server] List of all logged users: %s\n", allLoggedUsers);
 }
 
 int readSize(int sd)

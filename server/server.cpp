@@ -371,7 +371,7 @@ int handleLogin(void *arg, sqlite3 *db)
       int rcPassword = sqlite3_step(stmtPassword);
       int passwordCorrect = rcPassword == SQLITE_ROW;
 
-      if (passwordCorrect)
+      if (passwordCorrect && !userIsLoggedIn(username))
       {
         printf("[Thread %d] Password is correct. Logging in...\n", tdL.idThread);
         fflush(stdout);
@@ -385,14 +385,22 @@ int handleLogin(void *arg, sqlite3 *db)
           printf("[Thread %d] Password confirmation message sent.\n\n", tdL.idThread);
           fflush(stdout);
         }
-
-        logUserIn(username);
+        if (userIsLoggedIn(username))
+        {
+          printf("[Thread %d] User is already logged in. Closing connection...\n", tdL.idThread);
+          fflush(stdout);
+          return -2;
+        }
+        else
+        {
+          logUserIn(username);
+        }
       }
       else
       {
-        printf("[Thread %d] Password is incorrect. Closing connection...\n", tdL.idThread);
+        printf("[Thread %d] Password is incorrect or user is already logged. Closing connection...\n", tdL.idThread);
         fflush(stdout);
-        if (writePlusSize(thread_no, sd, "Password is incorrect.") < 0)
+        if (writePlusSize(thread_no, sd, "Password is incorrect or user is already logged in.") < 0)
         {
           return -1;
         }
