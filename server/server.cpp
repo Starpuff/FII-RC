@@ -262,6 +262,26 @@ static void *treat(void *arg)
           sqlite3_close(db);
         }
       }
+      else if (strcmp(command, "4") == 0)
+      {
+        printf("[Thread %d] Received command 4. Getting conversation with an user. Waiting for user...\n", tdL.idThread);
+        
+        char *otherUser = (char *)calloc(100, sizeof(char));
+        if (readPlusSize(tdL.idThread, tdL.cl, otherUser, 100) < 0)
+        {
+          printf("[Thread %d] Error at read(otherUser) from client.\n", tdL.idThread);
+          fflush(stdout);
+          logUserOut(username);
+          close(tdL.cl);
+          sqlite3_close(db);
+          return NULL;
+        }
+        
+        printf("[Thread %d] Received otherUser: %s\n", tdL.idThread, otherUser);
+        fflush(stdout);
+
+
+      }
       else
       {
         writePlusSize(tdL.idThread, tdL.cl, loggedUserList);
@@ -294,27 +314,14 @@ int handleLogin(void *arg, sqlite3 *db)
   printf("[Thread %d] Username received: %s\n", tdL.idThread, username);
   fflush(stdout);
 
-  sqlite3_stmt *stmt;
-  // string modified_username = "'" + string(username) + "'";
-  const char *sql = "SELECT username FROM users WHERE username = ?";
+  int usernameExists = usernameExists(db, username);
 
-  if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) != SQLITE_OK)
+  if (usernameExists < 0)
   {
-    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    printf("[Thread %d] Error at usernameExists().\n", tdL.idThread);
     fflush(stdout);
     return -1;
   }
-
-  // printf("strlen(username) = %ld\n", strlen(username));
-  if (sqlite3_bind_text(stmt, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
-  {
-    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-    fflush(stdout);
-    return -1;
-  }
-
-  int rc = sqlite3_step(stmt);
-  int usernameExists = rc == SQLITE_ROW;
 
   // printf("[Thread %d] sqlite3_step returned: %d\n", tdL.idThread, rc);
   if (usernameExists && userIsLoggedIn(username))
@@ -472,9 +479,22 @@ void initializeDatabase(sqlite3 *db)
   }
 }
 
-void createConversationTable(sqlite3 *db, char *user1, char *user2, char *conversationName)
+void createConversationTable(sqlite3 *db, char *user1, char *user2)
 {
   char *err_msg = 0;
+  char *conversationName = (char *)calloc(200, sizeof(char));
+  if (strcmp(user1, user2) < 0)
+  {
+    strcpy(conversationName, user1);
+    strcat(conversationName, "_");
+    strcat(conversationName, user2);
+  }
+  else
+  {
+    strcpy(conversationName, user2);
+    strcat(conversationName, "_");
+    strcat(conversationName, user1);
+  }
   string createConversationTableQuery = string("CREATE TABLE IF NOT EXISTS ") + conversationName + " (id INTEGER PRIMARY KEY AUTOINCREMENT, message TEXT NOT NULL, sender TEXT NOT NULL, readByReceiver INTEGER DEFAULT 0, replyTo INTEGER, Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (Sender) REFERENCES users(username), FOREIGN KEY (replyTo) REFERENCES " + conversationName + "(id));";
   int rc = sqlite3_exec(db, createConversationTableQuery.c_str(), 0, 0, &err_msg);
 
@@ -530,6 +550,31 @@ bool userIsLoggedIn(char *username)
     }
   }
   return false;
+}
+
+int usernameExists(sqlite3 *db, char *username)
+{
+  sqlite3_stmt *stmt;
+  // string modified_username = "'" + string(username) + "'";
+  const char *sql = "SELECT username FROM users WHERE username = ?";
+
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, 0) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
+    return -1;
+  }
+
+  // printf("strlen(username) = %ld\n", strlen(username));
+  if (sqlite3_bind_text(stmt, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
+    return -1;
+  }
+
+  int rc = sqlite3_step(stmt);
+  return rc == SQLITE_ROW;
 }
 
 char *getAllUsers(sqlite3 *db)

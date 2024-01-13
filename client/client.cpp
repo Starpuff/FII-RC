@@ -25,6 +25,7 @@ int readSize(int sd);
 void writePlusSize(int sd, const char *message);
 void reverse(char str[], int length);
 char *itoa(int num, char str[], int base);
+void getConversation(int sd, char *user);
 
 int main(int argc, char *argv[])
 {
@@ -84,6 +85,24 @@ int main(int argc, char *argv[])
         else if (strcmp(input, "2") == 0)
         {
             getAllLoggedUsers(sd);
+        }
+        else if (strcmp(input, "4") == 0)
+        {
+            char user[100];
+            memset(user, 0, 100);
+            printf("[client] Enter the username of the user you want to see the chat history with: ");
+            fflush(stdout);
+            scanf("%s", user);
+
+            if (strcmp(user, username) == 0)
+            {
+                printf("[client] You cannot see the chat history with yourself.\n");
+                fflush(stdout);
+            }
+            else
+            {
+                getConversation(sd, user);
+            }
         }
         else if (strcmp(input, "quit") == 0)
         {
@@ -184,7 +203,7 @@ void getAllUsers(int sd)
     memset(allUsers, 0, sizeof(allUsers));
     readPlusSize(sd, allUsers, 1000);
 
-    printf("[Server] List of all users: %s\n", allUsers);
+    printf("\n\n[Server] List of all users: %s\n", allUsers);
 }
 
 void getAllLoggedUsers(int sd)
@@ -329,6 +348,12 @@ char *itoa(int num, char str[], int base)
     reverse(str, i);
 
     return str;
+}
+
+void getConversation(int sd, char *user)
+{
+    writePlusSize(sd, "4");
+    writePlusSize(sd, user);
 }
 // g++ client.cpp -o client
 //./client 127.0.0.1 2908
