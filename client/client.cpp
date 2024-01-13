@@ -26,6 +26,7 @@ void writePlusSize(int sd, const char *message);
 void reverse(char str[], int length);
 char *itoa(int num, char str[], int base);
 void getConversation(int sd, char *user);
+int command3(int sd, char *sender, char *receiver);
 
 int main(int argc, char *argv[])
 {
@@ -86,8 +87,29 @@ int main(int argc, char *argv[])
         {
             getAllLoggedUsers(sd);
         }
+        else if (strcmp(input, "3") == 0)
+        {
+            writePlusSize(sd, "3");
+
+            char user[100];
+            memset(user, 0, 100);
+            printf("\n[client] Enter the username of the user you want to send a message to: ");
+            fflush(stdout);
+            scanf("%s", user);
+
+            int status = command3(sd, username, user);
+            if (status < 0)
+            {
+                printf("[client] User doens't exist. Try again.\n");
+                fflush(stdout);
+                break;
+            }
+            /// TODO: handle returns
+        }
         else if (strcmp(input, "4") == 0)
         {
+            writePlusSize(sd, "4");
+
             char user[100];
             memset(user, 0, 100);
             printf("[client] Enter the username of the user you want to see the chat history with: ");
@@ -353,7 +375,99 @@ char *itoa(int num, char str[], int base)
 void getConversation(int sd, char *user)
 {
     writePlusSize(sd, "4");
+
     writePlusSize(sd, user);
+
+    char *userStatus = (char *)calloc(100, sizeof(char));
+    readPlusSize(sd, userStatus, 100);
+
+    if (strcmp(userStatus, "Other user does not exist.") == 0)
+    {
+        printf("[server] %s Please retry with another username.\n", userStatus);
+        fflush(stdout);
+        return;
+    }
+    else if (strcmp(userStatus, "Other user exists. Fetching conversation...") == 0)
+    {
+        printf("[server] %s\n", userStatus);
+        fflush(stdout);
+    }
+    else
+    {
+        printf("[client] Unexpected reply. Closing connection...\n");
+        fflush(stdout);
+        close(sd);
+        exit(0);
+        return;
+    }
+
+    char *conversationStatus = (char *)calloc(100, sizeof(char));
+    readPlusSize(sd, conversationStatus, 100);
+
+    if (strcmp(conversationStatus, "Conversation exists.") == 0)
+    {
+        printf("[server] %s\n", conversationStatus);
+        fflush(stdout);
+    }
+    else if (strcmp(conversationStatus, "No conversation found.") == 0)
+    {
+        printf("[server] %s\n", conversationStatus);
+        fflush(stdout);
+        return;
+    }
+    else
+    {
+        printf("[client] Unexpected reply. Closing connection...\n");
+        fflush(stdout);
+        close(sd);
+        exit(0);
+        return;
+    }
+
+    /// TODO: primeste conversatia, while loop probabil
 }
+
+int command3(int sd, char *sender, char *receiver)
+{
+    writePlusSize(sd, receiver);
+
+    char *status = (char *)calloc(100, sizeof(char));
+    readPlusSize(sd, status, 100);
+
+    if (strcmp(status, "Other user does not exist.") == 0)
+    {
+        printf("[server] %s Please retry with another username.\n", status);
+        fflush(stdout);
+        return -1;
+    }
+    else if (strcmp(status, "Other user exists. Send message!") == 0)
+    {
+        printf("[server] %s\n", status);
+        fflush(stdout);
+    }
+    else
+    {
+        printf("[client] Unexpected reply. Closing connection...\n");
+        fflush(stdout);
+        close(sd);
+        exit(0);
+        return -1;
+    }
+
+    char *message = (char *)calloc(1000, sizeof(char));
+    printf("[client] Enter your message to %s: ", receiver);
+    fflush(stdout);
+    read(0, message, 1000);
+    message[strlen(message) - 1] = '\0';
+
+    writePlusSize(sd, message);
+
+    char *confirmation = (char *)calloc(100, sizeof(char));
+    readPlusSize(sd, confirmation, 100);
+    printf("[server] %s\n", confirmation);
+    fflush(stdout);
+    return 1;
+}
+
 // g++ client.cpp -o client
 //./client 127.0.0.1 2908

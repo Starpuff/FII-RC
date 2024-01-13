@@ -36,7 +36,7 @@ int handleLogin(void *, sqlite3 *db);
 void initializeDatabase(sqlite3 *db);
 static int callbackPrintUsers(void *data, int argc, char **argv, char **azColName);
 static int callbackUsernameExists(void *data, int argc, char **argv, char **azColName);
-void createConversationTable(sqlite3 *db, char *user1, char *user2, char *conversationName);
+char *createConversationTable(sqlite3 *db, char *user1, char *user2);
 void logUserIn(char *username);
 void logUserOut(char *username);
 bool userIsLoggedIn(char *username);
@@ -50,6 +50,10 @@ char *itoa(int num, char str[], int base);
 void reverse(char str[], int length);
 int userExists(sqlite3 *db, char *username);
 int isPasswordCorrect(sqlite3 *db, char *username, char *password);
+void addMessageToConversation(sqlite3 *db, char *sender, char *receiver, char *message, char *conversationName);
+int command4Handling(thData tdL, sqlite3 *db, char *username);
+int command3Handling(thData tdL, sqlite3 *db, char *username);
+bool tableExists(sqlite3 *db, const char *tableName);
 
 int main()
 {
@@ -264,30 +268,25 @@ static void *treat(void *arg)
           sqlite3_close(db);
         }
       }
-      else if (strcmp(command, "4") == 0)
-      {
-        printf("[Thread %d] Received command 4. Getting conversation with an user. Waiting for user...\n", tdL.idThread);
-        
-        char *otherUser = (char *)calloc(100, sizeof(char));
-        if (readPlusSize(tdL.idThread, tdL.cl, otherUser, 100) < 0)
-        {
-          printf("[Thread %d] Error at read(otherUser) from client.\n", tdL.idThread);
-          fflush(stdout);
-          logUserOut(username);
-          close(tdL.cl);
-          sqlite3_close(db);
-          return NULL;
-        }
-        
-        printf("[Thread %d] Received otherUser: %s\n", tdL.idThread, otherUser);
-        fflush(stdout);
-
-
-      }
       else
       {
         writePlusSize(tdL.idThread, tdL.cl, loggedUserList);
       }
+    }
+    else if (strcmp(command, "3") == 0)
+    {
+      printf("[Thread %d] Received command 3. Waiting for user to send an username...\n", tdL.idThread);
+      fflush(stdout);
+
+      command3Handling(tdL, db, username);
+      /// TODO: vezi la ce da return si da return aici la ce trebuie
+    }
+    else if (strcmp(command, "4") == 0)
+    {
+      printf("[Thread %d] Received command 4. Getting conversation with an user. Waiting for user...\n", tdL.idThread);
+
+      command4Handling(tdL, db, username);
+      /// TODO: vezi la ce se da return si da return aici la ce trebuie
     }
     else
     {
@@ -464,7 +463,7 @@ void initializeDatabase(sqlite3 *db)
   }
 }
 
-void createConversationTable(sqlite3 *db, char *user1, char *user2)
+char *createConversationTable(sqlite3 *db, char *user1, char *user2)
 {
   char *err_msg = 0;
   char *conversationName = (char *)calloc(200, sizeof(char));
@@ -480,7 +479,7 @@ void createConversationTable(sqlite3 *db, char *user1, char *user2)
     strcat(conversationName, "_");
     strcat(conversationName, user1);
   }
-  string createConversationTableQuery = string("CREATE TABLE IF NOT EXISTS ") + conversationName + " (id INTEGER PRIMARY KEY AUTOINCREMENT, message TEXT NOT NULL, sender TEXT NOT NULL, readByReceiver INTEGER DEFAULT 0, replyTo INTEGER, Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (Sender) REFERENCES users(username), FOREIGN KEY (replyTo) REFERENCES " + conversationName + "(id));";
+  string createConversationTableQuery = string("CREATE TABLE IF NOT EXISTS ") + conversationName + " (id INTEGER PRIMARY KEY AUTOINCREMENT, message TEXT NOT NULL, sender VARCHAR(100) NOT NULL, readByReceiver INTEGER DEFAULT 0, replyTo INTEGER, Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (sender) REFERENCES users(username), FOREIGN KEY (replyTo) REFERENCES " + conversationName + "(id));";
   int rc = sqlite3_exec(db, createConversationTableQuery.c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK)
@@ -490,6 +489,7 @@ void createConversationTable(sqlite3 *db, char *user1, char *user2)
     sqlite3_close(db);
     exit(1);
   }
+  return conversationName;
 }
 
 static int callbackPrintUsers(void *NotUsed, int argc, char **argv, char **azColName)
@@ -566,29 +566,29 @@ int userExists(sqlite3 *db, char *username)
 int isPasswordCorrect(sqlite3 *db, char *username, char *password)
 {
   sqlite3_stmt *stmtPassword;
-      const char *sqlPassword = "SELECT password FROM users WHERE username = ? AND password = ?";
+  const char *sqlPassword = "SELECT password FROM users WHERE username = ? AND password = ?";
 
-      if (sqlite3_prepare_v2(db, sqlPassword, -1, &stmtPassword, 0) != SQLITE_OK)
-      {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        return -3;
-      }
+  if (sqlite3_prepare_v2(db, sqlPassword, -1, &stmtPassword, 0) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    return -3;
+  }
 
-      if (sqlite3_bind_text(stmtPassword, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
-      {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        return -3;
-      }
+  if (sqlite3_bind_text(stmtPassword, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    return -3;
+  }
 
-      if (sqlite3_bind_text(stmtPassword, 2, password, strlen(password), SQLITE_STATIC) != SQLITE_OK)
-      {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        return -3;
-      }
+  if (sqlite3_bind_text(stmtPassword, 2, password, strlen(password), SQLITE_STATIC) != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    return -3;
+  }
 
-      int rcPassword = sqlite3_step(stmtPassword);
-      sqlite3_finalize(stmtPassword);
-      return rcPassword == SQLITE_ROW;
+  int rcPassword = sqlite3_step(stmtPassword);
+  sqlite3_finalize(stmtPassword);
+  return rcPassword == SQLITE_ROW;
 }
 
 char *getAllUsers(sqlite3 *db)
@@ -700,13 +700,8 @@ int writePlusSize(int id_thread, int sd, const char *message)
     fflush(stdout);
     return -1;
   }
-  else
-    // {
-    //     printf("[Thread %d] Message size: %s sent\n", id_thread, size);
-    //     fflush(stdout);
-    // }
 
-    sleep(1);
+  sleep(1);
 
   if (write(sd, message, messageSize) < 0)
   {
@@ -778,4 +773,260 @@ char *itoa(int num, char str[], int base)
 
   return str;
 }
-// g++ server.cpp -o server -pthread -std=c++11 -lstdc++ -lsqlite3
+
+void addMessageToConversation(sqlite3 *db, char *sender, char *receiver, char *message, char *conversationName)
+{
+  char *err_msg = 0;
+  string insertMessageQuery = "INSERT INTO " + string(conversationName) + " (message, sender) VALUES (?, ?);";
+
+  sqlite3_stmt *stmt;
+  int rc = sqlite3_prepare_v2(db, insertMessageQuery.c_str(), -1, &stmt, 0);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
+    sqlite3_close(db);
+    exit(1);
+  }
+
+  sqlite3_bind_text(stmt, 1, message, -1, SQLITE_STATIC);
+  sqlite3_bind_text(stmt, 2, sender, -1, SQLITE_STATIC);
+
+  rc = sqlite3_step(stmt);
+
+  sqlite3_finalize(stmt);
+
+  if (rc != SQLITE_DONE)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
+    sqlite3_close(db);
+    exit(1);
+  }
+}
+
+int command4Handling(thData tdL, sqlite3 *db, char *username)
+{
+  char *otherUser = (char *)calloc(100, sizeof(char));
+  if (readPlusSize(tdL.idThread, tdL.cl, otherUser, 100) < 0)
+  {
+    printf("[Thread %d] Error at read(otherUser) from client.\n", tdL.idThread);
+    fflush(stdout);
+    logUserOut(username);
+    close(tdL.cl);
+    sqlite3_close(db);
+    return -1;
+  }
+
+  printf("[Thread %d] Received otherUser: %s\n", tdL.idThread, otherUser);
+  fflush(stdout);
+
+  int otherUsernameExists = userExists(db, otherUser);
+
+  if (otherUsernameExists < 0)
+  {
+    printf("[Thread %d] Error at userExists().\n", tdL.idThread);
+    fflush(stdout);
+    logUserOut(username);
+    close(tdL.cl);
+    sqlite3_close(db);
+    return otherUsernameExists;
+  }
+  else if (otherUsernameExists == 0)
+  {
+    printf("[Thread %d] Other user does not exist.\n", tdL.idThread);
+    fflush(stdout);
+    if (writePlusSize(tdL.idThread, tdL.cl, "Other user does not exist.") < 0)
+    {
+      logUserOut(username);
+      close(tdL.cl);
+      sqlite3_close(db);
+      return -1;
+    }
+  }
+  else
+  {
+    printf("[Thread %d] Other user exists.\n", tdL.idThread);
+    fflush(stdout);
+    if (writePlusSize(tdL.idThread, tdL.cl, "Other user exists. Fetching conversation...") < 0)
+    {
+      printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
+      fflush(stdout);
+      logUserOut(username);
+      close(tdL.cl);
+      sqlite3_close(db);
+      return -1;
+    }
+    else
+    {
+      printf("Thread %d] Confirmation message sent. Conversation with %s is being fetched...\n", tdL.idThread, otherUser);
+      fflush(stdout);
+      return 1;
+
+      char *conversationName = (char *)calloc(200, sizeof(char));
+      if (strcmp(username, otherUser) < 0)
+      {
+        strcpy(conversationName, username);
+        strcat(conversationName, "_");
+        strcat(conversationName, otherUser);
+      }
+      else
+      {
+        strcpy(conversationName, otherUser);
+        strcat(conversationName, "_");
+        strcat(conversationName, username);
+      }
+      if (tableExists(db, conversationName) == 0)
+      {
+        printf("[Thread %d] Conversation exists.\n", tdL.idThread);
+        fflush(stdout);
+        if(writePlusSize(tdL.idThread, tdL.cl, "Conversation exists.") < 0)
+        {
+          printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
+          fflush(stdout);
+          logUserOut(username);
+          close(tdL.cl);
+          sqlite3_close(db);
+          return -1;
+        }
+        else
+        {
+          printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
+          fflush(stdout);
+          retrieveConversation(db, tdL, conversationName);
+          /// TODO: retrieveConversation!!!!
+        }
+      }
+      else
+      {
+        printf("[Thread %d] No conversation found.\n", tdL.idThread);
+        fflush(stdout);
+        if (writePlusSize(tdL.idThread, tdL.cl, "No conversation found.") < 0)
+        {
+          printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
+          fflush(stdout);
+          logUserOut(username);
+          close(tdL.cl);
+          sqlite3_close(db);
+          return -1;
+        }
+        /// TODO: verifica daca exista conv intre ei si da o inapoi
+      }
+    }
+    return 1;
+  }
+
+  int command3Handling(thData tdL, sqlite3 * db, char *username)
+  {
+    char *otherUser = (char *)calloc(100, sizeof(char));
+    if (readPlusSize(tdL.idThread, tdL.cl, otherUser, 100) < 0)
+    {
+      printf("[Thread %d] Error at read(otherUser) from client.\n", tdL.idThread);
+      fflush(stdout);
+      logUserOut(username);
+      close(tdL.cl);
+      sqlite3_close(db);
+      return -1;
+    }
+
+    if (!userExists(db, otherUser))
+    {
+      printf("[Thread %d] Other user does not exist.\n", tdL.idThread);
+      fflush(stdout);
+      if (writePlusSize(tdL.idThread, tdL.cl, "Other user does not exist.") < 0)
+      {
+        logUserOut(username);
+        close(tdL.cl);
+        sqlite3_close(db);
+        return -2;
+      }
+    }
+    else
+    {
+      printf("[Thread %d] Other user exists.\n", tdL.idThread);
+      fflush(stdout);
+      if (writePlusSize(tdL.idThread, tdL.cl, "Other user exists. Send message!") < 0)
+      {
+        printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
+        fflush(stdout);
+        logUserOut(username);
+        close(tdL.cl);
+        sqlite3_close(db);
+        return -1;
+      }
+      else
+      {
+        printf("[Thread %d] Confirmation message sent.  Waiting for message from %s to %s...\n", tdL.idThread, username, otherUser);
+        fflush(stdout);
+
+        char *message = (char *)calloc(1000, sizeof(char));
+        if (readPlusSize(tdL.idThread, tdL.cl, message, 1000) < 0)
+        {
+          printf("[Thread %d] Error at read(message) from client.\n", tdL.idThread);
+          fflush(stdout);
+          logUserOut(username);
+          close(tdL.cl);
+          sqlite3_close(db);
+          return -1;
+        }
+
+        printf("[Thread %d] Message received: %s\n", tdL.idThread, message);
+        fflush(stdout);
+
+        char *conversationName = (char *)calloc(200, sizeof(char));
+
+        printf("[Thread %d] Creating conversation table between %s and %s...\n", tdL.idThread, username, otherUser);
+
+        conversationName = createConversationTable(db, username, otherUser);
+
+        printf("[Thread %d] Conversation table created: %s\n", tdL.idThread, conversationName);
+        fflush(stdout);
+
+        addMessageToConversation(db, username, otherUser, message, conversationName);
+
+        printf("[Thread %d] Message added to conversation.\n", tdL.idThread);
+        fflush(stdout);
+
+        if (writePlusSize(tdL.idThread, tdL.cl, "Message sent!") < 0)
+        {
+          printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
+          fflush(stdout);
+          logUserOut(username);
+          close(tdL.cl);
+          sqlite3_close(db);
+          return -1;
+        }
+        else
+        {
+          printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
+          fflush(stdout);
+        }
+      }
+    }
+    return 1;
+  }
+
+  bool tableExists(sqlite3 * db, const char *tableName)
+  {
+    std::string query = "SELECT name FROM sqlite_master WHERE type='table' AND name = ?;";
+
+    sqlite3_stmt *stmt;
+    int rc = sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, 0);
+
+    if (rc != SQLITE_OK)
+    {
+      std::cerr << "SQL error: " << sqlite3_errmsg(db) << std::endl;
+      return false;
+    }
+
+    sqlite3_bind_text(stmt, 1, tableName, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+
+    sqlite3_finalize(stmt);
+
+    return (rc == SQLITE_ROW);
+  }
+
+  // g++ server.cpp -o server -pthread -std=c++11 -lstdc++ -lsqlite3
