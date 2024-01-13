@@ -36,10 +36,12 @@ void initializeDatabase(sqlite3 *db);
 static int callbackPrintUsers(void *data, int argc, char **argv, char **azColName);
 static int callbackUsernameExists(void *data, int argc, char **argv, char **azColName);
 void createConversationTable(sqlite3 *db, char *user1, char *user2, char *conversationName);
-void logUserIn(char *username, int threadId);
+void logUserIn(char *username);
 bool userIsLoggedIn(char *username);
 char *getAllUsers(sqlite3 *db);
 int callbackGetAllUsers(void *data, int argc, char **argv, char **azColName);
+void writePlusSize(int cl, char *message);
+void readSize(int cl, size_t *size);
 
 int main()
 {
@@ -94,20 +96,20 @@ int main()
 
   initializeDatabase(db);
 
-  const char *sql = "SELECT username FROM users;";
-  rc = sqlite3_exec(db, sql, callbackPrintUsers, 0, &err_msg);
+  // const char *sql = "SELECT username FROM users;";
+  // rc = sqlite3_exec(db, sql, callbackPrintUsers, 0, &err_msg);
 
-  if (rc != SQLITE_OK)
-  {
-    fprintf(stderr, "Failed to select data\n");
-    fprintf(stderr, "SQL error: %s\n", err_msg);
-    fflush(stdout);
+  // if (rc != SQLITE_OK)
+  // {
+  //   fprintf(stderr, "Failed to select data\n");
+  //   fprintf(stderr, "SQL error: %s\n", err_msg);
+  //   fflush(stdout);
 
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
+  //   sqlite3_free(err_msg);
+  //   sqlite3_close(db);
 
-    return 1;
-  }
+  //   return 1;
+  // }
 
   // ------------------ no more database --------------------
 
@@ -159,14 +161,17 @@ static void *treat(void *arg)
     printf("[Thread %d] Opened database successfully\n", tdL.idThread);
     fflush(stdout);
   }
+
   printf("[Thread %d] Waiting for messages...\n", tdL.idThread);
   fflush(stdout);
   pthread_detach(pthread_self());
+
   handleLogin((struct thData *)arg, db);
 
   while (true)
   {
     char command[100];
+    memset(command, 0, sizeof(command));
     int bytesRead = read(((thData *)arg)->cl, &command, sizeof(int));
 
     /// TODO: refresh / nullify command so it doesn't stay the same throughout the loop
@@ -192,24 +197,11 @@ static void *treat(void *arg)
       }
       else
       {
-        printf("[Thread %d] User list received: %s\n", tdL.idThread, userList);
-        fflush(stdout);
-        printf("[Thread %d] length of userList = %ld\n", tdL.idThread, strlen(userList));
+        // printf("[Thread %d] User list received: %s\n", tdL.idThread, userList);
+        // fflush(stdout);
+        // printf("[Thread %d] length of userList = %ld\n", tdL.idThread, strlen(userList));
 
-        size_t userListLength = strlen(userList);
-        if (write(tdL.cl, &userListLength, sizeof(userListLength)) < 0)
-        {
-          perror("[Thread] Error at write(userListLength) to the client.\n");
-          free(userList);
-          return 0;
-        }
-        if (write(tdL.cl, userList, userListLength) < 0)
-        {
-          perror("[Thread] Error at write(userList) to the client.\n");
-          free(userList);
-          return 0;
-        }
-        free(userList);
+        writePlusSize(tdL.cl, userList);
       }
     }
     else if (bytesRead <= 0)
@@ -230,13 +222,13 @@ static void *treat(void *arg)
 
 void handleLogin(void *arg, sqlite3 *db)
 {
-  char username[100];
-  memset(username, 0, sizeof(username));
-  char password[100];
-  memset(password, 0, sizeof(password));
   char *err_msg = 0;
   struct thData tdL;
   tdL = *((struct thData *)arg);
+
+  size_t usernameSize;
+  readSize(tdL.cl, &usernameSize);
+  char *username = (char *)malloc(usernameSize + 1);
 
   if (read(tdL.cl, username, sizeof(username)) <= 0)
   {
@@ -261,7 +253,7 @@ void handleLogin(void *arg, sqlite3 *db)
   }
 
   // printf("strlen(username) = %ld\n", strlen(username));
-  if (sqlite3_bind_text(stmt, 1, username, strlen(username) - 1, SQLITE_STATIC) != SQLITE_OK)
+  if (sqlite3_bind_text(stmt, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
   {
     fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
     fflush(stdout);
@@ -290,7 +282,7 @@ void handleLogin(void *arg, sqlite3 *db)
       fflush(stdout);
     }
   }
-  if (usernameExists)
+  else if (usernameExists)
   {
     printf("[Thread %d] Username exists.\n", tdL.idThread);
     fflush(stdout);
@@ -307,6 +299,10 @@ void handleLogin(void *arg, sqlite3 *db)
       fflush(stdout);
 
       //  ---------- password -----------
+      size_t passwordSize;
+      readSize(tdL.cl, &passwordSize);
+      char *password = (char *)malloc(passwordSize + 1);
+
       if (read(tdL.cl, password, sizeof(password)) <= 0)
       {
         printf("[Thread %d]\n", tdL.idThread);
@@ -327,13 +323,13 @@ void handleLogin(void *arg, sqlite3 *db)
         return;
       }
 
-      if (sqlite3_bind_text(stmtPassword, 1, username, strlen(username) - 1, SQLITE_STATIC) != SQLITE_OK)
+      if (sqlite3_bind_text(stmtPassword, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
       {
         fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
         return;
       }
 
-      if (sqlite3_bind_text(stmtPassword, 2, password, strlen(password) - 1, SQLITE_STATIC) != SQLITE_OK)
+      if (sqlite3_bind_text(stmtPassword, 2, password, strlen(password), SQLITE_STATIC) != SQLITE_OK)
       {
         fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
         return;
@@ -360,7 +356,13 @@ void handleLogin(void *arg, sqlite3 *db)
           fflush(stdout);
         }
 
-        logUserIn(username, tdL.idThread);
+        printf("aici\n");
+        // -----test-----
+        for (auto usr = loggedUsers.begin(); usr != loggedUsers.end(); usr++)
+        {
+          printf("[test]username = %s, logged in = %d\n", usr->first, usr->second);
+        }
+        logUserIn(username);
       }
       else
       {
@@ -456,8 +458,9 @@ static int callbackPrintUsers(void *NotUsed, int argc, char **argv, char **azCol
   return 0;
 }
 
-void logUserIn(char *username, int threadId)
+void logUserIn(char *username)
 {
+  printf("[Test] Logging user %s in...\n", username);
   for (auto usr = loggedUsers.begin(); usr != loggedUsers.end(); usr++)
   {
     if (strcmp(usr->first, username) == 0 && usr->second == false)
@@ -517,5 +520,32 @@ int callbackGetAllUsers(void *data, int argc, char **argv, char **azColName)
     }
   }
   return 0;
+}
+
+void writePlusSize(int cl, char *message)
+{
+  size_t length = strlen(message);
+  if (write(cl, &length, sizeof(length)) < 0)
+  {
+    perror("[Thread] Error at write(length) to the client.\n");
+    free(message);
+    return;
+  }
+  if (write(cl, message, length) < 0)
+  {
+    perror("[Thread] Error at write(message) to the client.\n");
+    free(message);
+    return;
+  }
+  free(message);
+}
+
+void readSize(int cl, size_t *size)
+{
+  if (read(cl, size, sizeof(*size)) <= 0)
+  {
+    perror("[Thread] Error at read(length) from the client.\n");
+    return;
+  }
 }
 // g++ server.cpp -o server -pthread -std=c++11 -lstdc++ -lsqlite3

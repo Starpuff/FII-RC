@@ -18,6 +18,8 @@ int port;
 
 int login(int sd, char *username, char *password);
 void getAllUsers(int sd, char *username);
+void readSize(int sd, size_t *size);
+void writePlusSize(int sd, char *message);
 
 int main(int argc, char *argv[])
 {
@@ -44,17 +46,16 @@ int main(int argc, char *argv[])
     server.sin_addr.s_addr = inet_addr(argv[1]);
     server.sin_port = htons(port);
 
-    char username[100];
-    memset(username, 0, sizeof(username));
-    char password[100];
-    memset(password, 0, sizeof(password));
-
     if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
     {
         perror("[client] Error at connect().\n");
         return errno;
     }
 
+    char username[100];
+    char password[100];
+    memset(username, 0, sizeof(username));
+    memset(password, 0, sizeof(password));
     login(sd, username, password);
 
     while (true)
@@ -94,11 +95,18 @@ int login(int sd, char *username, char *password)
 {
     memset(username, 0, sizeof(username));
     memset(password, 0, sizeof(password));
+
     printf("[client] Enter your username: ");
     fflush(stdout);
     read(0, username, sizeof(username));
-    write(sd, username, strlen(username) + 1);
+    username[strlen(username) - 1] = '\0';
+
+    printf("aici0");
+    writePlusSize(sd, username);
+    printf("aici4");
     fflush(stdout);
+
+    /// TODO: aici am ajuns
 
     char usernameStatus[100];
     memset(usernameStatus, 0, sizeof(usernameStatus));
@@ -115,6 +123,7 @@ int login(int sd, char *username, char *password)
             printf("[client] Enter your password: ");
             fflush(stdout);
             read(0, password, sizeof(password));
+            password[strlen(password) - 1] = '\0';
             fflush(stdout);
             write(sd, password, strlen(password) + 1);
             fflush(stdout);
@@ -194,11 +203,7 @@ void getAllUsers(int sd, char *username)
     write(sd, "1", strlen("1") + 1);
 
     size_t usernamesSize;
-    if (read(sd, &usernamesSize, sizeof(usernamesSize))<0)
-    {
-        perror("[client] Error at read().\n");
-        return;
-    }
+    readSize(sd, &usernamesSize);
 
     char *allUsers = (char *)malloc(usernamesSize + 1);
     if (allUsers == NULL)
@@ -213,9 +218,39 @@ void getAllUsers(int sd, char *username)
         free(allUsers);
         return;
     }
-    
+
     allUsers[usernamesSize] = '\0';
     printf("[Server] List of all users: %s\n", allUsers);
+}
+
+void readSize(int sd, size_t *size)
+{
+    if (read(sd, size, sizeof(size)) < 0)
+    {
+        perror("[client] Error at read().\n");
+        return;
+    }
+}
+
+void writePlusSize(int sd, char *message)
+{
+    size_t messageSize = strlen(message);
+    printf("aici");
+    if (write(sd, &messageSize, sizeof(messageSize)) < 0)
+    {
+        perror("[client] Error at write(length) to server.\n");
+        free(message);
+        return;
+    }
+    printf("aici2");
+    if (write(sd, message, messageSize) < 0)
+    {
+        perror("[client] Error at write(message) to server.\n");
+        free(message);
+        return;
+    }
+    printf("aici3");
+    free(message);
 }
 // g++ client.cpp -o client
 //./client 127.0.0.1 2908
