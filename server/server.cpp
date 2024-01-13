@@ -48,6 +48,8 @@ int readPlusSize(int id_thread, int sd, char *message, int bufferSize);
 int readSize(int id_thread, int sd);
 char *itoa(int num, char str[], int base);
 void reverse(char str[], int length);
+int userExists(sqlite3 *db, char *username);
+int isPasswordCorrect(sqlite3 *db, char *username, char *password);
 
 int main()
 {
@@ -314,13 +316,13 @@ int handleLogin(void *arg, sqlite3 *db)
   printf("[Thread %d] Username received: %s\n", tdL.idThread, username);
   fflush(stdout);
 
-  int usernameExists = usernameExists(db, username);
+  int usernameExists = userExists(db, username);
 
   if (usernameExists < 0)
   {
-    printf("[Thread %d] Error at usernameExists().\n", tdL.idThread);
+    printf("[Thread %d] Error at userExists().\n", tdL.idThread);
     fflush(stdout);
-    return -1;
+    return usernameExists;
   }
 
   // printf("[Thread %d] sqlite3_step returned: %d\n", tdL.idThread, rc);
@@ -354,29 +356,14 @@ int handleLogin(void *arg, sqlite3 *db)
       printf("[Thread %d] Password received: %s\n", tdL.idThread, password);
       fflush(stdout);
 
-      sqlite3_stmt *stmtPassword;
-      const char *sqlPassword = "SELECT password FROM users WHERE username = ? AND password = ?";
+      int passwordCorrect = isPasswordCorrect(db, username, password);
 
-      if (sqlite3_prepare_v2(db, sqlPassword, -1, &stmtPassword, 0) != SQLITE_OK)
+      if (passwordCorrect < 0)
       {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        return -3;
+        printf("[Thread %d] Error at isPasswordCorrect().\n", tdL.idThread);
+        fflush(stdout);
+        return passwordCorrect;
       }
-
-      if (sqlite3_bind_text(stmtPassword, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
-      {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        return -3;
-      }
-
-      if (sqlite3_bind_text(stmtPassword, 2, password, strlen(password), SQLITE_STATIC) != SQLITE_OK)
-      {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        return -3;
-      }
-
-      int rcPassword = sqlite3_step(stmtPassword);
-      int passwordCorrect = rcPassword == SQLITE_ROW;
 
       if (passwordCorrect && !userIsLoggedIn(username))
       {
@@ -436,8 +423,6 @@ int handleLogin(void *arg, sqlite3 *db)
       return -2;
     }
   }
-
-  sqlite3_finalize(stmt);
   return 0;
 }
 
@@ -552,7 +537,7 @@ bool userIsLoggedIn(char *username)
   return false;
 }
 
-int usernameExists(sqlite3 *db, char *username)
+int userExists(sqlite3 *db, char *username)
 {
   sqlite3_stmt *stmt;
   // string modified_username = "'" + string(username) + "'";
@@ -574,7 +559,36 @@ int usernameExists(sqlite3 *db, char *username)
   }
 
   int rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
   return rc == SQLITE_ROW;
+}
+
+int isPasswordCorrect(sqlite3 *db, char *username, char *password)
+{
+  sqlite3_stmt *stmtPassword;
+      const char *sqlPassword = "SELECT password FROM users WHERE username = ? AND password = ?";
+
+      if (sqlite3_prepare_v2(db, sqlPassword, -1, &stmtPassword, 0) != SQLITE_OK)
+      {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return -3;
+      }
+
+      if (sqlite3_bind_text(stmtPassword, 1, username, strlen(username), SQLITE_STATIC) != SQLITE_OK)
+      {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return -3;
+      }
+
+      if (sqlite3_bind_text(stmtPassword, 2, password, strlen(password), SQLITE_STATIC) != SQLITE_OK)
+      {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return -3;
+      }
+
+      int rcPassword = sqlite3_step(stmtPassword);
+      sqlite3_finalize(stmtPassword);
+      return rcPassword == SQLITE_ROW;
 }
 
 char *getAllUsers(sqlite3 *db)
