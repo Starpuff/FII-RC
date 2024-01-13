@@ -1,13 +1,14 @@
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <errno.h>
-#include <unistd.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <netdb.h>
 #include <string.h>
-#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <iostream>
 
 using namespace std;
@@ -15,29 +16,29 @@ using namespace std;
 extern int errno;
 
 int port;
-
+int readSize(int sd);
+void readPlusSize(int sd, char *message, int bufferSize);
 int login(int sd, char *username, char *password);
 void getAllUsers(int sd, char *username);
-void readSize(int sd, size_t *size);
-void writePlusSize(int sd, char *message);
+int readSize(int sd);
+void writePlusSize(int sd, const char *message);
+void reverse(char str[], int length);
+char *itoa(int num, char str[], int base);
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     int sd;
     struct sockaddr_in server;
     int nr = 0;
     char buf[10];
 
-    if (argc != 3)
-    {
+    if (argc != 3) {
         printf("Sintaxa: %s <adresa_server> <port>\n", argv[0]);
         return -1;
     }
 
     port = atoi(argv[2]);
 
-    if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
-    {
+    if ((sd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         perror("Eroare la socket().\n");
         return errno;
     }
@@ -46,20 +47,16 @@ int main(int argc, char *argv[])
     server.sin_addr.s_addr = inet_addr(argv[1]);
     server.sin_port = htons(port);
 
-    if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1)
-    {
+    if (connect(sd, (struct sockaddr *)&server, sizeof(struct sockaddr)) == -1) {
         perror("[client] Error at connect().\n");
         return errno;
     }
 
     char username[100];
     char password[100];
-    memset(username, 0, sizeof(username));
-    memset(password, 0, sizeof(password));
     login(sd, username, password);
 
-    while (true)
-    {
+    while (true) {
         printf("[client] Choose a command: \n");
         printf("[client] 1 - Show all users. \n");
         printf("[client] 2 - Show all online users. \n");
@@ -74,16 +71,14 @@ int main(int argc, char *argv[])
         char input[10];
         scanf("%s", input);
 
-        if (strcmp(input, "1") == 0)
-        {
+        if (strcmp(input, "1") == 0) {
             getAllUsers(sd, username);
         }
 
-        if (strcmp(input, "quit") == 0)
-        {
-            write(sd, input, strlen(input) + 1);
-            fflush(stdout);
+        if (strcmp(input, "quit") == 0) {
+            writePlusSize(sd, "quit");
             printf("[client] Closing connection...\n");
+            fflush(stdout);
             break;
         }
     }
@@ -91,8 +86,7 @@ int main(int argc, char *argv[])
     close(sd);
 }
 
-int login(int sd, char *username, char *password)
-{
+int login(int sd, char *username, char *password) {
     memset(username, 0, sizeof(username));
     memset(password, 0, sizeof(password));
 
@@ -100,157 +94,182 @@ int login(int sd, char *username, char *password)
     fflush(stdout);
     read(0, username, sizeof(username));
     username[strlen(username) - 1] = '\0';
-
-    printf("aici0");
     writePlusSize(sd, username);
-    printf("aici4");
-    fflush(stdout);
-
-    /// TODO: aici am ajuns
 
     char usernameStatus[100];
-    memset(usernameStatus, 0, sizeof(usernameStatus));
-    if (read(sd, usernameStatus, sizeof(usernameStatus)) < 0)
-    {
-        perror("[client] Error at read().\n");
-        return errno;
-    }
-    else
-    {
-        if (strcmp(usernameStatus, "Username exists.") == 0)
-        {
-            fflush(stdout);
-            printf("[client] Enter your password: ");
-            fflush(stdout);
-            read(0, password, sizeof(password));
-            password[strlen(password) - 1] = '\0';
-            fflush(stdout);
-            write(sd, password, strlen(password) + 1);
-            fflush(stdout);
+    readPlusSize(sd, usernameStatus, 100);
+    if (strcmp(usernameStatus, "Username exists.") == 0) {
+        printf("[client] Enter your password: ");
+        fflush(stdout);
+        read(0, password, sizeof(password));
+        password[strlen(password) - 1] = '\0';
+        writePlusSize(sd, password);
 
-            char passwordStatus[100];
-            memset(passwordStatus, 0, sizeof(passwordStatus));
-            if (read(sd, passwordStatus, sizeof(passwordStatus)) < 0)
-            {
-                perror("[client] Error at read().\n");
-                fflush(stdout);
-                return errno;
-            }
-            else
-            {
-                if (strcmp(passwordStatus, "Password is correct. Logging in...") == 0)
-                {
-                    fflush(stdout);
-                    printf("[server] %s\n", passwordStatus);
-                    fflush(stdout);
-                }
-                else if (strcmp(passwordStatus, "Password is incorrect.") == 0)
-                {
-                    fflush(stdout);
-                    printf("[server] %s\n", passwordStatus);
-                    fflush(stdout);
-                    printf("[client] Closing connection...\n");
-                    close(sd);
-                    exit(0);
-                    return 0;
-                }
-                else
-                {
-                    printf("[client] Unexpected reply. Closing connection...\n");
-                    fflush(stdout);
-                    close(sd);
-                    exit(0);
-                    return 0;
-                }
-            }
-        }
-        else if (strcmp(usernameStatus, "Username does not exist.") == 0)
-        {
+        char passwordStatus[100];
+        memset(passwordStatus, 0, 100);
+        readPlusSize(sd, passwordStatus, 100);
+        if (strcmp(passwordStatus, "Password is correct. Logging in...") == 0) {
+            printf("[server] %s\n", passwordStatus);
             fflush(stdout);
-            printf("[server] %s\n", usernameStatus);
-            fflush(stdout);
+        } else if (strcmp(passwordStatus, "Password is incorrect.") == 0) {
+            printf("[server] %s\n", passwordStatus);
             printf("[client] Closing connection...\n");
             fflush(stdout);
             close(sd);
             exit(0);
             return 0;
-        }
-        else if (strcmp(usernameStatus, "User is already logged in.") == 0)
-        {
-            printf("[server] %s\n", usernameStatus);
-            fflush(stdout);
-            printf("[client] Closing connection...\n");
-            fflush(stdout);
-            close(sd);
-            exit(0);
-            return 0;
-        }
-        else
-        {
-            fflush(stdout);
+        } else {
             printf("[client] Unexpected reply. Closing connection...\n");
             fflush(stdout);
             close(sd);
             exit(0);
             return 0;
         }
+    } else if (strcmp(usernameStatus, "Username does not exist.") == 0) {
+        printf("[server] %s\n", usernameStatus);
+        printf("[client] Closing connection...\n");
+        fflush(stdout);
+        close(sd);
+        exit(0);
+        return 0;
+    } else if (strcmp(usernameStatus, "User is already logged in.") == 0) {
+        printf("[server] %s\n", usernameStatus);
+        printf("[client] Closing connection...\n");
+        close(sd);
+        exit(0);
+        return 0;
+    } else {
+        printf("[client] Unexpected reply. Closing connection...\n");
+        close(sd);
+        exit(0);
         return 0;
     }
+    return 0;
 }
 
-void getAllUsers(int sd, char *username)
-{
-    write(sd, "1", strlen("1") + 1);
+void getAllUsers(int sd, char *username) {
+    writePlusSize(sd, "1");
 
-    size_t usernamesSize;
-    readSize(sd, &usernamesSize);
+    char allUsers[1000];
+    memset(allUsers, 0, sizeof(allUsers));
+    readPlusSize(sd, allUsers, 1000);
 
-    char *allUsers = (char *)malloc(usernamesSize + 1);
-    if (allUsers == NULL)
-    {
-        perror("[client] Error at malloc().\n");
-        return;
-    }
-    if (read(sd, allUsers, usernamesSize) < 0)
-    {
-        perror("[client] Error at read().\n");
-        fflush(stdout);
-        free(allUsers);
-        return;
-    }
-
-    allUsers[usernamesSize] = '\0';
     printf("[Server] List of all users: %s\n", allUsers);
 }
 
-void readSize(int sd, size_t *size)
-{
-    if (read(sd, size, sizeof(size)) < 0)
-    {
-        perror("[client] Error at read().\n");
-        return;
+int readSize(int sd) {
+    char size[10];
+    memset(size, 0, 10);
+    if (read(sd, size, 10) < 0) {
+        perror("[client] Error at reading the size of the message.\n");
+        close(sd);
+        exit(-1);
+    }
+    printf("[client] Message size: %s received\n", size);
+    int messageSize = atoi(size);
+    return messageSize;
+}
+
+void readPlusSize(int sd, char *message, int bufferSize) {
+    int messageSize = readSize(sd);
+    if (messageSize > bufferSize) {
+        perror("[client] Message size at reading is too big. Closing connection...\n");
+        fflush(stdout);
+        close(sd);
+        exit(0);
+    }
+    if (messageSize <= 0) {
+        perror("[client] Message size at reading is too small. Closing connection...\n");
+        fflush(stdout);
+        close(sd);
+        exit(0);
+    }
+    char temp[bufferSize + 1];
+    if (read(sd, temp, bufferSize) < 0) {
+        perror("[client] Error at read(message) from server.\n");
+        close(sd);
+        exit(-1);
+    }
+
+    memset(message, 0, bufferSize);
+    strncpy(message, temp, messageSize);
+
+    printf("[client] Message: %s received\n", message);
+}
+
+void writePlusSize(int sd, const char *message) {
+    size_t messageSize = strlen(message);
+    char size[10];
+    memset(size, 0, sizeof(size));
+    itoa(messageSize, size, 10);
+    if (write(sd, size, strlen(size)) < 0) {
+        perror("[client] Error at write(length) to server.\n");
+        fflush(stdout);
+        close(sd);
+        exit(-1);
+    } else {
+        printf("[client] Message size: %ld sent\n", messageSize);
+    }
+
+    sleep(1);
+
+    if (write(sd, message, messageSize) < 0) {
+        perror("[client] Error at write(message) to server.\n");
+        fflush(stdout);
+        close(sd);
+        exit(-1);
+    } else {
+        printf("[client] Message: %s sent\n", message);
     }
 }
 
-void writePlusSize(int sd, char *message)
-{
-    size_t messageSize = strlen(message);
-    printf("aici");
-    if (write(sd, &messageSize, sizeof(messageSize)) < 0)
-    {
-        perror("[client] Error at write(length) to server.\n");
-        free(message);
-        return;
+void reverse(char str[], int length) {
+    int start = 0;
+    int end = length - 1;
+    while (start < end) {
+        char temp = str[start];
+        str[start] = str[end];
+        str[end] = temp;
+        start++;
+        end--;
     }
-    printf("aici2");
-    if (write(sd, message, messageSize) < 0)
-    {
-        perror("[client] Error at write(message) to server.\n");
-        free(message);
-        return;
+}
+
+char *itoa(int num, char str[], int base) {
+    int i = 0;
+    int isNegative = 0;
+
+    // Handle 0 explicitly, otherwise empty string is printed
+    if (num == 0) {
+        str[i++] = '0';
+        str[i] = '\0';
+        return str;
     }
-    printf("aici3");
-    free(message);
+
+    // Handle negative numbers for bases other than 10
+    if (num < 0 && base != 10) {
+        isNegative = 1;
+        num = -num;
+    }
+
+    // Process individual digits
+    while (num != 0) {
+        int remainder = num % base;
+        str[i++] = (remainder > 9) ? (remainder - 10) + 'a' : remainder + '0';
+        num = num / base;
+    }
+
+    // Append negative sign for bases other than 10
+    if (isNegative && base != 10) {
+        str[i++] = '-';
+    }
+
+    str[i] = '\0';  // Null-terminate the string
+
+    // Reverse the string
+    reverse(str, i);
+
+    return str;
 }
 // g++ client.cpp -o client
 //./client 127.0.0.1 2908
