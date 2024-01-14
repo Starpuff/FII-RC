@@ -29,6 +29,7 @@ void getConversation(int sd, char *user, char *username);
 int command3(int sd, char *sender, char *receiver);
 void printMessage(char *message, char* username);
 int command5(int sd, char *sender, char *receiver);
+int getUnreadMessages(int sd, char *username);
 
 int main(int argc, char *argv[])
 {
@@ -69,6 +70,19 @@ int main(int argc, char *argv[])
     // ----- send username to server ----
     writePlusSize(sd, username);
     // ----------------------------------
+
+    if (getUnreadMessages(sd, username) < 0)
+    {
+        printf("[client] Error at getUnreadMessages(). Closing connection...\n");
+        fflush(stdout);
+        close(sd);
+        exit(0);
+    }
+    else
+    {
+        printf("[client] getUnreadMessages() handled!\n");
+        fflush(stdout);
+    }
 
     while (true)
     {
@@ -621,6 +635,19 @@ int command5(int sd, char *sender, char *receiver)
         fflush(stdout);
         return -1;
     }
+}
+
+int getUnreadMessages(int sd, char *username)
+{
+    char * unreadMessageData = (char *)calloc(1200, sizeof(char));
+    readPlusSize(sd, unreadMessageData, 1200);
+    while (strcmp(unreadMessageData, "end") != 0)
+    {
+        printMessage(unreadMessageData, username);
+        readPlusSize(sd, unreadMessageData, 1200);
+    }
+    
+    return 1;
 }
 
 // g++ client.cpp -o client

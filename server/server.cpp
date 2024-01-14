@@ -56,6 +56,8 @@ int command3Handling(thData tdL, char *username);
 bool tableExists(sqlite3 *db, const char *tableName);
 int retrieveConversation(thData tdL, char *conversationName, char *username);
 int command5Handling(thData tdL, char *username);
+int getUnreadMessages(thData tdL, char *username);
+void insertIntoConversationsTable(char *user1, char *user2, char *conversationName);
 
 int main()
 {
@@ -203,6 +205,20 @@ static void *treat(void *arg)
     return NULL;
   }
   // -----------------------------------------------
+
+  if (getUnreadMessages(tdL, username) < 0)
+  {
+    printf("[Thread %d] Error at getUnreadMessages().\n", tdL.idThread);
+    fflush(stdout);
+    close(tdL.cl);
+    sqlite3_close(db);
+    return NULL;
+  }
+  else
+  {
+    printf("[Thread %d] Unread messages retrieved.\n", tdL.idThread);
+    fflush(stdout);
+  }
 
   while (true)
   {
@@ -1115,6 +1131,8 @@ int command3Handling(thData tdL, char *username)
         printf("[Thread %d] Confirmation message sent.\n", tdL.idThread);
         fflush(stdout);
       }
+
+      insertIntoConversationsTable(username, otherUser, conversationName);
     }
   }
   sqlite3_close(db);
@@ -1459,4 +1477,171 @@ int command5Handling(thData tdL, char *username)
   return 1;
 }
 
+int getUnreadMessages(thData tdL, char *username)
+{
+  sqlite3 *db;
+  int rc = sqlite3_open("database.db", &db);
+
+  if (rc != SQLITE_OK)
+  {
+    printf("Cannot open database: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
+    return -1;
+  }
+
+  string selectConversationsQuery = "SELECT conversationName FROM conversations WHERE user1 = ? OR user2 = ?;";
+  sqlite3_stmt *stmt;
+
+  rc = sqlite3_prepare_v2(db, selectConversationsQuery.c_str(), -1, &stmt, 0);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
+    sqlite3_close(db);
+    return -1;
+  }
+
+  sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+  sqlite3_bind_text(stmt, 2, username, -1, SQLITE_STATIC);
+
+  char conversations[1000][200];
+  int numberOfConversations = 0;
+  while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+  {
+    numberOfConversations++;
+    strcpy(conversations[numberOfConversations], (char *)sqlite3_column_text(stmt, 0));
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+
+  int numberOfUnreadMessages = 0;
+  struct UnreadMessageData
+  {
+    int id;
+    char *sender;
+    char *message;
+    int replyTo;
+    int readByReceiver;
+  } unreadMessage[1000];
+
+  for (int i = 1; i <= numberOfConversations; i++)
+  {
+    sqlite3 *db;
+    int rc = sqlite3_open("database.db", &db);
+
+    if (rc != SQLITE_OK)
+    {
+      printf("Cannot open database: %s\n", sqlite3_errmsg(db));
+      fflush(stdout);
+      return -1;
+    }
+
+    string selectMessagesQuery = "SELECT id, sender, message, replyTo, readByReceiver FROM " + string(conversations[i]) + " WHERE sender != ? AND readByReceiver = 0;";
+    sqlite3_stmt *stmt;
+
+    rc = sqlite3_prepare_v2(db, selectMessagesQuery.c_str(), -1, &stmt, 0);
+
+    if (rc != SQLITE_OK)
+    {
+      fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+      fflush(stdout);
+      sqlite3_close(db);
+      return -1;
+    }
+
+    sqlite3_bind_text(stmt, 1, username, -1, SQLITE_STATIC);
+
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
+    {
+      numberOfUnreadMessages++;
+      unreadMessage[numberOfUnreadMessages].id = sqlite3_column_int(stmt, 0);
+      unreadMessage[numberOfUnreadMessages].sender = (char *)calloc(100, sizeof(char));
+      strcpy(unreadMessage[numberOfUnreadMessages].sender, (char *)sqlite3_column_text(stmt, 1));
+      unreadMessage[numberOfUnreadMessages].message = (char *)calloc(1000, sizeof(char));
+      strcpy(unreadMessage[numberOfUnreadMessages].message, (char *)sqlite3_column_text(stmt, 2));
+      unreadMessage[numberOfUnreadMessages].replyTo = sqlite3_column_int(stmt, 3);
+      unreadMessage[numberOfUnreadMessages].readByReceiver = sqlite3_column_int(stmt, 4);
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+  }
+
+  if (numberOfUnreadMessages == 0)
+  {
+    printf("[Server] No unread messages found.\n");
+    fflush(stdout);
+  }
+
+  for (int i = 1; i <= numberOfUnreadMessages; i++)
+  {
+    char *unreadMessageData = (char *)calloc(1200, sizeof(char));
+    snprintf(unreadMessageData, 1200, "%d|%s|%s|%d|%d", unreadMessage[i].id, unreadMessage[i].sender, unreadMessage[i].message, unreadMessage[i].replyTo, unreadMessage[i].readByReceiver);
+
+    printf("[Server] unreadMessageData = %s\n", unreadMessageData);
+    fflush(stdout);
+
+    if (writePlusSize(tdL.idThread, tdL.cl, unreadMessageData) < 0)
+    {
+      fprintf(stderr, "[Server] Error at writePlusSize().\n");
+      fflush(stdout);
+      return -1;
+    }
+    sleep(1);
+  }
+
+  sleep(1);
+
+  if (writePlusSize(tdL.idThread, tdL.cl, "end") < 0)
+  {
+    printf("[Server] Error at writePlusSize().\n");
+    fflush(stdout);
+    return -1;
+  }
+  return 1;
+}
+
+void insertIntoConversationsTable(char *user1, char *user2, char *conversationName)
+{
+  sqlite3 *db;
+  int rcdb = sqlite3_open("database.db", &db);
+
+  if (rcdb != SQLITE_OK)
+  {
+    printf("Cannot open database: %s\n", sqlite3_errmsg(db));
+    fflush(stdout);
+    return;
+  }
+
+  string insertConversationQuery =
+      "INSERT INTO conversations (user1, user2, conversationName) VALUES (?, ?, ?);";
+
+  sqlite3_stmt *stmt;
+  int rc = sqlite3_prepare_v2(db, insertConversationQuery.c_str(), -1, &stmt, 0);
+
+  if (rc != SQLITE_OK)
+  {
+    fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return;
+  }
+
+  // Bind parameters and execute the statement
+  sqlite3_bind_text(stmt, 1, user1, -1, SQLITE_STATIC);
+  sqlite3_bind_text(stmt, 2, user2, -1, SQLITE_STATIC);
+  sqlite3_bind_text(stmt, 3, conversationName, -1, SQLITE_STATIC);
+
+  rc = sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+
+  if (rc != SQLITE_DONE)
+  {
+    fprintf(stderr, "Error inserting conversation: %s\n", sqlite3_errmsg(db));
+  }
+  else
+  {
+    printf("Conversation inserted successfully.\n");
+  }
+}
 // g++ server.cpp -o server -pthread -std=c++11 -lstdc++ -lsqlite3
