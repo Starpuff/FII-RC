@@ -25,9 +25,9 @@ int readSize(int sd);
 void writePlusSize(int sd, const char *message);
 void reverse(char str[], int length);
 char *itoa(int num, char str[], int base);
-void getConversation(int sd, char *user);
+void getConversation(int sd, char *user, char *username);
 int command3(int sd, char *sender, char *receiver);
-void printMessage(char *message);
+void printMessage(char *message, char* username);
 
 int main(int argc, char *argv[])
 {
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                getConversation(sd, user);
+                getConversation(sd, user, username);
             }
         }
         else if (strcmp(input, "quit") == 0)
@@ -367,7 +367,7 @@ char *itoa(int num, char str[], int base)
     return str;
 }
 
-void getConversation(int sd, char *user)
+void getConversation(int sd, char *user, char* username)
 {
     writePlusSize(sd, user);
 
@@ -421,12 +421,12 @@ void getConversation(int sd, char *user)
     readPlusSize(sd, message, 1200);
     while (strcmp(message, "end") != 0)
     {
-        printMessage(message);
+        printMessage(message, username);
         readPlusSize(sd, message, 1200);
     }
 }
 
-void printMessage(char *message)
+void printMessage(char *message, char *username)
 {
     char *id = (char *)calloc(10, sizeof(char));
     char *sender = (char *)calloc(100, sizeof(char));
@@ -445,7 +445,7 @@ void printMessage(char *message)
     p = strtok(NULL, "|");
     strcpy(readByReceiver, p);
 
-    if (strcmp(readByReceiver, "0") == 0)
+    if (strcmp(readByReceiver, "0") == 0 && strcmp(sender, username)!=0)
     {
         if (strcmp(replyTo, "0") != 0)
         {
