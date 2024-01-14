@@ -188,6 +188,8 @@ static void *treat(void *arg)
     sqlite3_close(db);
     return NULL;
   }
+
+  sqlite3_close(db);
   // --------- read username from client --------
   char username[100];
   memset(username, 0, 100);
@@ -215,7 +217,17 @@ static void *treat(void *arg)
       return NULL;
     }
 
-    /// TODO: refresh / nullify command so it doesn't stay the same throughout the loop
+    sqlite3 *db;
+    int rc = sqlite3_open("database.db", &db);
+
+    if (rc != SQLITE_OK)
+    {
+      printf("[Thread %d] Cannot open database: %s\n", tdL.idThread, sqlite3_errmsg(db));
+      fflush(stdout);
+      sqlite3_close(db);
+      close(tdL.cl);
+      exit(1);
+    }
 
     printf("\n[Thread %d] Received command: %s\n\n", tdL.idThread, command);
     fflush(stdout);
@@ -252,6 +264,7 @@ static void *treat(void *arg)
 
         writePlusSize(tdL.idThread, tdL.cl, userList);
       }
+      sqlite3_close(db);
     }
     else if (strcmp(command, "2") == 0)
     {
@@ -273,13 +286,24 @@ static void *treat(void *arg)
       {
         writePlusSize(tdL.idThread, tdL.cl, loggedUserList);
       }
+      sqlite3_close(db);
     }
     else if (strcmp(command, "3") == 0)
     {
       printf("[Thread %d] Received command 3. Waiting for user to send an username...\n", tdL.idThread);
       fflush(stdout);
 
-      command3Handling(tdL, db, username);
+      int command3Return = command3Handling(tdL, db, username);
+      if (command3Return < 0)
+      {
+        printf("[Thread %d] Error at command3Handling().\n", tdL.idThread);
+        fflush(stdout);
+        logUserOut(username);
+        close(tdL.cl);
+        sqlite3_close(db);
+        return NULL;
+      }
+      sqlite3_close(db);
       /// TODO: vezi la ce da return si da return aici la ce trebuie
     }
     else if (strcmp(command, "4") == 0)
@@ -295,8 +319,7 @@ static void *treat(void *arg)
         sqlite3_close(db);
         return NULL;
       }
-
-      /// TODO: vezi la ce se da return si da return aici la ce trebuie
+      sqlite3_close(db);
     }
     else
     {
@@ -826,9 +849,6 @@ int command4Handling(thData tdL, sqlite3 *db, char *username)
   {
     printf("[Thread %d] Error at read(otherUser) from client.\n", tdL.idThread);
     fflush(stdout);
-    logUserOut(username);
-    close(tdL.cl);
-    sqlite3_close(db);
     return -1;
   }
 
@@ -841,9 +861,6 @@ int command4Handling(thData tdL, sqlite3 *db, char *username)
   {
     printf("[Thread %d] Error at userExists().\n", tdL.idThread);
     fflush(stdout);
-    logUserOut(username);
-    close(tdL.cl);
-    sqlite3_close(db);
     return otherUsernameExists;
   }
   else if (otherUsernameExists == 0)
@@ -852,9 +869,7 @@ int command4Handling(thData tdL, sqlite3 *db, char *username)
     fflush(stdout);
     if (writePlusSize(tdL.idThread, tdL.cl, "Other user does not exist.") < 0)
     {
-      logUserOut(username);
-      close(tdL.cl);
-      sqlite3_close(db);
+      printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
       return -1;
     }
   }
@@ -866,9 +881,6 @@ int command4Handling(thData tdL, sqlite3 *db, char *username)
     {
       printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
       fflush(stdout);
-      logUserOut(username);
-      close(tdL.cl);
-      sqlite3_close(db);
       return -1;
     }
     else
@@ -901,8 +913,7 @@ int command4Handling(thData tdL, sqlite3 *db, char *username)
       {
         fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
         fflush(stdout);
-        sqlite3_close(db);
-        exit(1);
+        return -1;
       }
       rc = sqlite3_step(stmt);
       if (rc == SQLITE_ROW)
@@ -957,9 +968,6 @@ int command4Handling(thData tdL, sqlite3 *db, char *username)
         {
           printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
           fflush(stdout);
-          logUserOut(username);
-          close(tdL.cl);
-          sqlite3_close(db);
           return -1;
         }
         return 1;
@@ -977,9 +985,6 @@ int command3Handling(thData tdL, sqlite3 *db, char *username)
   {
     printf("[Thread %d] Error at read(otherUser) from client.\n", tdL.idThread);
     fflush(stdout);
-    logUserOut(username);
-    close(tdL.cl);
-    sqlite3_close(db);
     return -1;
   }
 
@@ -990,8 +995,6 @@ int command3Handling(thData tdL, sqlite3 *db, char *username)
     if (writePlusSize(tdL.idThread, tdL.cl, "Other user does not exist.") < 0)
     {
       logUserOut(username);
-      close(tdL.cl);
-      sqlite3_close(db);
       return -2;
     }
   }
@@ -1003,9 +1006,6 @@ int command3Handling(thData tdL, sqlite3 *db, char *username)
     {
       printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
       fflush(stdout);
-      logUserOut(username);
-      close(tdL.cl);
-      sqlite3_close(db);
       return -1;
     }
     else
@@ -1018,9 +1018,6 @@ int command3Handling(thData tdL, sqlite3 *db, char *username)
       {
         printf("[Thread %d] Error at read(message) from client.\n", tdL.idThread);
         fflush(stdout);
-        logUserOut(username);
-        close(tdL.cl);
-        sqlite3_close(db);
         return -1;
       }
 
@@ -1045,9 +1042,6 @@ int command3Handling(thData tdL, sqlite3 *db, char *username)
       {
         printf("[Thread %d] Error at writePlusSize().\n", tdL.idThread);
         fflush(stdout);
-        logUserOut(username);
-        close(tdL.cl);
-        sqlite3_close(db);
         return -1;
       }
       else

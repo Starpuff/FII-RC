@@ -105,7 +105,6 @@ int main(int argc, char *argv[])
                 fflush(stdout);
                 break;
             }
-            /// TODO: handle returns
         }
         else if (strcmp(input, "4") == 0)
         {
@@ -426,8 +425,6 @@ void getConversation(int sd, char *user)
         printMessage(message);
         readPlusSize(sd, message, 1200);
     }
-
-    /// TODO: primeste conversatia, while loop probabil
 }
 
 void printMessage(char *message)
