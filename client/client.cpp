@@ -25,9 +25,9 @@ int readSize(int sd);
 void writePlusSize(int sd, const char *message);
 void reverse(char str[], int length);
 char *itoa(int num, char str[], int base);
-void getConversation(int sd, char *user);
+void getConversation(int sd, char *user, char *username);
 int command3(int sd, char *sender, char *receiver);
-void printMessage(char *message);
+void printMessage(char *message, char* username);
 
 int main(int argc, char *argv[])
 {
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
     while (true)
     {
         printf("\n[client] Choose a command: \n");
-        printf("[client] 1 - Show all users.  2 - Show all online users.  3 - Send a message to an user.  4 - Show chat history with an user.  5 - Show all unread messages.  6 - Reply to a message.\n");
+        printf("[client] 1 - Show all users.  2 - Show all online users.  3 - Send a message to an user.  4 - Show chat history with an user.  5 - Reply to a message.\n");
         printf("[client] 'quit' - close the connection. \n");
         printf("[client] To enter a command, type the corresponding number or phrase: ");
         fflush(stdout);
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                getConversation(sd, user);
+                getConversation(sd, user, username);
             }
         }
         else if (strcmp(input, "quit") == 0)
@@ -367,7 +367,7 @@ char *itoa(int num, char str[], int base)
     return str;
 }
 
-void getConversation(int sd, char *user)
+void getConversation(int sd, char *user, char* username)
 {
     writePlusSize(sd, user);
 
@@ -401,7 +401,6 @@ void getConversation(int sd, char *user)
     {
         printf("[server] %s\n", conversationStatus);
         fflush(stdout);
-
     }
     else if (strcmp(conversationStatus, "No conversation found.") == 0)
     {
@@ -422,41 +421,59 @@ void getConversation(int sd, char *user)
     readPlusSize(sd, message, 1200);
     while (strcmp(message, "end") != 0)
     {
-        printMessage(message);
+        printMessage(message, username);
         readPlusSize(sd, message, 1200);
     }
 }
 
-void printMessage(char *message)
+void printMessage(char *message, char *username)
 {
     char *id = (char *)calloc(10, sizeof(char));
     char *sender = (char *)calloc(100, sizeof(char));
     char *messageContent = (char *)calloc(1000, sizeof(char));
     char *replyTo = (char *)calloc(10, sizeof(char));
+    char *readByReceiver = (char *)calloc(10, sizeof(char));
 
-    char *p = strtok(message, " ");
+    char *p = strtok(message, "|");
     strcpy(id, p);
-    p = strtok(NULL, " ");
+    p = strtok(NULL, "|");
     strcpy(sender, p);
-    p = strtok(NULL, " ");
+    p = strtok(NULL, "|");
     strcpy(messageContent, p);
-    p = strtok(NULL, " ");
-    if (strcmp(p, "0") != 0)
+    p = strtok(NULL, "|");
+    strcpy(replyTo, p);
+    p = strtok(NULL, "|");
+    strcpy(readByReceiver, p);
+
+    if (strcmp(readByReceiver, "0") == 0 && strcmp(sender, username)!=0)
     {
-        strcpy(replyTo, p);
-        printf("id: %s -- [%s] %s (reply to %s)\n", id, sender, messageContent, replyTo);
+        if (strcmp(replyTo, "0") != 0)
+        {
+            printf("[Unread!] id: %s -- [%s] %s (reply to %s)\n", id, sender, messageContent, replyTo);
+        }
+        else
+        {
+            printf("[Unread!] id: %s -- [%s] %s\n", id, sender, messageContent);
+        }
     }
     else
     {
-        printf("id: %s -- [%s] %s\n", id, sender, messageContent);
+        if (strcmp(replyTo, "0") != 0)
+        {
+            printf("id: %s -- [%s] %s (reply to %s)\n", id, sender, messageContent, replyTo);
+        }
+        else
+        {
+            printf("id: %s -- [%s] %s\n", id, sender, messageContent);
+        }
     }
 
     free(id);
     free(sender);
     free(messageContent);
     free(replyTo);
+    free(readByReceiver);
 }
-
 
 int command3(int sd, char *sender, char *receiver)
 {
