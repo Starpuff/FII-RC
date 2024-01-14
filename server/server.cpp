@@ -1489,7 +1489,7 @@ int getUnreadMessages(thData tdL, char *username)
     return -1;
   }
 
-  string selectConversationsQuery = "SELECT conversationName FROM conversations WHERE user1 = ? OR user2 = ?;";
+  string selectConversationsQuery = "SELECT conversationName FROM conversations WHERE user1 = ? OR user2 = ? LIMIT 1;";
   sqlite3_stmt *stmt;
 
   rc = sqlite3_prepare_v2(db, selectConversationsQuery.c_str(), -1, &stmt, 0);
