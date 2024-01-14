@@ -27,7 +27,7 @@ void reverse(char str[], int length);
 char *itoa(int num, char str[], int base);
 void getConversation(int sd, char *user, char *username);
 int command3(int sd, char *sender, char *receiver);
-void printMessage(char *message, char* username);
+void printMessage(char *message, char *username);
 int command5(int sd, char *sender, char *receiver);
 int getUnreadMessages(int sd, char *username);
 
@@ -404,7 +404,7 @@ char *itoa(int num, char str[], int base)
     return str;
 }
 
-void getConversation(int sd, char *user, char* username)
+void getConversation(int sd, char *user, char *username)
 {
     writePlusSize(sd, user);
 
@@ -482,7 +482,7 @@ void printMessage(char *message, char *username)
     p = strtok(NULL, "|");
     strcpy(readByReceiver, p);
 
-    if (strcmp(readByReceiver, "0") == 0 && strcmp(sender, username)!=0)
+    if (strcmp(readByReceiver, "0") == 0 && strcmp(sender, username) != 0)
     {
         if (strcmp(replyTo, "0") != 0)
         {
@@ -556,7 +556,7 @@ int command3(int sd, char *sender, char *receiver)
 
 int command5(int sd, char *sender, char *receiver)
 {
-     writePlusSize(sd, receiver);
+    writePlusSize(sd, receiver);
 
     char *status = (char *)calloc(100, sizeof(char));
     readPlusSize(sd, status, 100);
@@ -579,7 +579,7 @@ int command5(int sd, char *sender, char *receiver)
         return -1;
     }
 
-    printf("[client] Enter the id of the message you want to reply to: ");  
+    printf("[client] Enter the id of the message you want to reply to: ");
     fflush(stdout);
     char *id = (char *)calloc(10, sizeof(char));
     read(0, id, 10);
@@ -639,14 +639,14 @@ int command5(int sd, char *sender, char *receiver)
 
 int getUnreadMessages(int sd, char *username)
 {
-    char * unreadMessageData = (char *)calloc(1200, sizeof(char));
+    char *unreadMessageData = (char *)calloc(1200, sizeof(char));
     readPlusSize(sd, unreadMessageData, 1200);
     while (strcmp(unreadMessageData, "end") != 0)
     {
         printMessage(unreadMessageData, username);
         readPlusSize(sd, unreadMessageData, 1200);
     }
-    
+
     return 1;
 }
 
